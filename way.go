@@ -29,16 +29,16 @@ func New() *Way {
 }
 
 // adaptHandler adapts a `HandlerFunc` to `http.HandlerFunc`.
-func adaptHandler(way *Way, handler HandlerFunc) http.HandlerFunc {
+func adaptHandler(db *sql.DB, handler HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(way.sql, w, r)
+		ctx := NewContext(db, w, r)
 		handler(ctx)
 	}
 }
 
 // handleFuncWithMethod registers a new route with a matcher for the URL path and the HTTP method.
 func (w *Way) handleFuncWithMethod(path string, handler HandlerFunc, method string) {
-	w.router.HandleFunc(path, adaptHandler(w, handler)).Methods(method)
+	w.router.HandleFunc(path, adaptHandler(w.sql, handler)).Methods(method)
 }
 
 // Use adds a middleware to the middleware stack.
