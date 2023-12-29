@@ -37,24 +37,40 @@ func (w *Way) SqlClose() error {
 }
 
 func (w *Way) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	if w.sql == nil {
-		return nil, errors.New("database connection is not initialized")
-	}
-	return w.sql.ExecContext(ctx, query, args...)
+	return sqlExec(w.sql, ctx, query, args...)
 }
 
 func (w *Way) SqlExecNoResult(ctx context.Context, query string, args ...interface{}) error {
-	_, err := w.SqlExec(ctx, query, args...)
-	return err
+	return sqlExecNoResult(w.sql, ctx, query, args...)
 }
 
 func (w *Way) SqlQuery(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	if w.sql == nil {
-		return nil, errors.New("database connection is not initialized")
-	}
-	return w.sql.QueryContext(ctx, query, args...)
+	return sqlQuery(w.sql, ctx, query, args...)
 }
 
 func (w *Way) SqlQueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	return w.sql.QueryRowContext(ctx, query, args...)
+	return sqlQueryRow(w.sql, ctx, query, args...)
+}
+
+func sqlExec(db *sql.DB, ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	if db == nil {
+		return nil, errors.New("database connection is not initialized")
+	}
+	return db.ExecContext(ctx, query, args...)
+}
+
+func sqlExecNoResult(db *sql.DB, ctx context.Context, query string, args ...interface{}) error {
+	_, err := sqlExec(db, ctx, query, args...)
+	return err
+}
+
+func sqlQuery(db *sql.DB, ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	if db == nil {
+		return nil, errors.New("database connection is not initialized")
+	}
+	return db.QueryContext(ctx, query, args...)
+}
+
+func sqlQueryRow(db *sql.DB, ctx context.Context, query string, args ...interface{}) *sql.Row {
+	return db.QueryRowContext(ctx, query, args...)
 }

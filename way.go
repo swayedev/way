@@ -65,7 +65,7 @@ func (w *Way) Use(middleware ...MiddlewareFunc) {
 
 // HandleFunc registers a new route with a matcher for the URL path.
 func (w *Way) HandleFunc(path string, handler HandlerFunc) {
-	w.router.HandleFunc(path, adaptHandler(w, handler))
+	w.router.HandleFunc(path, adaptHandler(w.sql, handler))
 }
 
 // GET is a shortcut for `HandleFunc(path, handler)` for the "GET" method.
