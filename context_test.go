@@ -1,6 +1,7 @@
 package way
 
 import (
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,11 +14,16 @@ func TestNewContext(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	db, err := sql.Open("mysql", "root:root@tcp(localhost)/")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Create a ResponseWriter mock
 	res := httptest.NewRecorder()
 
 	// Create a new Context
-	ctx := NewContext(res, req)
+	ctx := NewContext(db, res, req)
 
 	// Test if the Context is correctly initialized
 	if ctx.Request != req {

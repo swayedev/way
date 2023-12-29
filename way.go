@@ -29,21 +29,43 @@ func New() *Way {
 }
 
 // adaptHandler adapts a `HandlerFunc` to `http.HandlerFunc`.
-func adaptHandler(handler HandlerFunc) http.HandlerFunc {
+func adaptHandler(way *Way, handler HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(w, r)
+		ctx := NewContext(way.sql, w, r)
 		handler(ctx)
 	}
 }
 
 // handleFuncWithMethod registers a new route with a matcher for the URL path and the HTTP method.
 func (w *Way) handleFuncWithMethod(path string, handler HandlerFunc, method string) {
-	w.router.HandleFunc(path, adaptHandler(handler)).Methods(method)
+	w.router.HandleFunc(path, adaptHandler(w, handler)).Methods(method)
+}
+
+// Use adds a middleware to the middleware stack.
+func (w *Way) Use(middleware ...MiddlewareFunc) {
+	w.router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
+			ctx := NewContext(w.sql, wr, r)
+
+			// Create a chain of middleware handlers
+			handler := func(c *Context) {
+				next.ServeHTTP(wr, r)
+			}
+
+			// Loop through the middleware in reverse order and chain them
+			for i := len(middleware) - 1; i >= 0; i-- {
+				handler = middleware[i](handler)
+			}
+
+			// Call the first middleware with the context
+			handler(ctx)
+		})
+	})
 }
 
 // HandleFunc registers a new route with a matcher for the URL path.
 func (w *Way) HandleFunc(path string, handler HandlerFunc) {
-	w.router.HandleFunc(path, adaptHandler(handler))
+	w.router.HandleFunc(path, adaptHandler(w, handler))
 }
 
 // GET is a shortcut for `HandleFunc(path, handler)` for the "GET" method.
