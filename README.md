@@ -1,4 +1,4 @@
-# Way
+# Way Framework
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/swayedev/way.svg)](https://pkg.go.dev/github.com/swayedev/way)
 
