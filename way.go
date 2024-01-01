@@ -2,7 +2,6 @@ package way
 
 import (
 	"context"
-	"database/sql"
 	"net"
 	"net/http"
 	"sync"
@@ -12,8 +11,8 @@ import (
 
 type Way struct {
 	startupMutex sync.RWMutex
+	db           *DB
 	router       *mux.Router
-	sql          *sql.DB
 	Server       *http.Server
 	Listener     net.Listener
 }
@@ -29,7 +28,7 @@ func New() *Way {
 }
 
 // adaptHandler adapts a `HandlerFunc` to `http.HandlerFunc`.
-func adaptHandler(db *sql.DB, handler HandlerFunc) http.HandlerFunc {
+func adaptHandler(db *DB, handler HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := NewContext(db, w, r)
 		handler(ctx)
@@ -38,14 +37,14 @@ func adaptHandler(db *sql.DB, handler HandlerFunc) http.HandlerFunc {
 
 // handleFuncWithMethod registers a new route with a matcher for the URL path and the HTTP method.
 func (w *Way) handleFuncWithMethod(path string, handler HandlerFunc, method string) {
-	w.router.HandleFunc(path, adaptHandler(w.sql, handler)).Methods(method)
+	w.router.HandleFunc(path, adaptHandler(w.db, handler)).Methods(method)
 }
 
 // Use adds a middleware to the middleware stack.
 func (w *Way) Use(middleware ...MiddlewareFunc) {
 	w.router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
-			ctx := NewContext(w.sql, wr, r)
+			ctx := NewContext(w.db, wr, r)
 
 			// Create a chain of middleware handlers
 			handler := func(c *Context) {
@@ -65,7 +64,7 @@ func (w *Way) Use(middleware ...MiddlewareFunc) {
 
 // HandleFunc registers a new route with a matcher for the URL path.
 func (w *Way) HandleFunc(path string, handler HandlerFunc) {
-	w.router.HandleFunc(path, adaptHandler(w.sql, handler))
+	w.router.HandleFunc(path, adaptHandler(w.db, handler))
 }
 
 // GET is a shortcut for `HandleFunc(path, handler)` for the "GET" method.

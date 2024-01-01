@@ -5,6 +5,11 @@ import (
 	"os"
 )
 
+var ports = map[string]string{
+	"mysql":    "3306",
+	"postgres": "5432",
+}
+
 func GetDbType() string {
 	if dbType := os.Getenv("WAY_DB_TYPE"); dbType != "" {
 		return dbType
@@ -42,7 +47,7 @@ func GetDbPort() string {
 		return port
 	}
 	log.Println("Environment variable WAY_DB_PORT is not set")
-	return ""
+	return ports[GetDbType()]
 }
 
 func GetDbName() string {
