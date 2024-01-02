@@ -22,6 +22,7 @@ type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
 func New() *Way {
 	return &Way{
+		db:     new(DB),
 		router: mux.NewRouter(),
 		Server: new(http.Server),
 	}
