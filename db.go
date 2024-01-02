@@ -18,6 +18,75 @@ type DB struct {
 	pgx    *pgx.Conn
 }
 
+func (d *DB) New(db interface{}) {
+	switch db.(type) {
+	case *sql.DB:
+		d.SqlNew(db.(*sql.DB))
+	case *pgx.Conn:
+		d.PgxNew(db.(*pgx.Conn))
+	}
+}
+
+func (d *DB) Open() error {
+	switch d.Driver {
+	case "postgres":
+		return d.PgxOpen()
+	case "mysql":
+		return d.SqlOpen()
+	}
+	return nil
+}
+
+func (d *DB) Close() error {
+	switch d.Driver {
+	case "postgres":
+		return d.PgxClose()
+	case "mysql":
+		return d.SqlClose()
+	}
+	return nil
+}
+
+func (d *DB) Exec(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
+	switch d.Driver {
+	case "postgres":
+		return d.PgxExec(ctx, query, args...)
+	case "mysql":
+		return d.SqlExec(ctx, query, args...)
+	}
+	return nil, errors.New("database driver is not initialized")
+}
+
+func (d *DB) ExecNoResult(ctx context.Context, query string, args ...interface{}) error {
+	switch d.Driver {
+	case "postgres":
+		return d.PgxExecNoResult(ctx, query, args...)
+	case "mysql":
+		return d.SqlExecNoResult(ctx, query, args...)
+	}
+	return errors.New("database driver is not initialized")
+}
+
+func (d *DB) Query(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
+	switch d.Driver {
+	case "postgres":
+		return d.PgxQuery(ctx, query, args...)
+	case "mysql":
+		return d.SqlQuery(ctx, query, args...)
+	}
+	return nil, errors.New("database driver is not initialized")
+}
+
+func (d *DB) QueryRow(ctx context.Context, query string, args ...interface{}) interface{} {
+	switch d.Driver {
+	case "postgres":
+		return d.PgxQueryRow(ctx, query, args...)
+	case "mysql":
+		return d.SqlQueryRow(ctx, query, args...)
+	}
+	return nil
+}
+
 // Sql Functions
 func (d *DB) Sql() *sql.DB {
 	return d.sql
@@ -72,6 +141,9 @@ func sqlExec(db *sql.DB, ctx context.Context, query string, args ...interface{})
 }
 
 func sqlExecNoResult(db *sql.DB, ctx context.Context, query string, args ...interface{}) error {
+	if db == nil {
+		return errors.New("database connection is not initialized")
+	}
 	_, err := sqlExec(db, ctx, query, args...)
 	return err
 }
@@ -84,6 +156,9 @@ func sqlQuery(db *sql.DB, ctx context.Context, query string, args ...interface{}
 }
 
 func sqlQueryRow(db *sql.DB, ctx context.Context, query string, args ...interface{}) *sql.Row {
+	if db == nil {
+		return nil
+	}
 	return db.QueryRowContext(ctx, query, args...)
 }
 

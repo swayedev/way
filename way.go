@@ -140,3 +140,8 @@ func newListener(network, address string) (net.Listener, error) {
 	}
 	return l, nil
 }
+
+// DB Functions
+func (w *Way) Db() *DB {
+	return w.db
+}
