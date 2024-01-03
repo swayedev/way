@@ -17,6 +17,12 @@ type Crypto interface {
 	Decrypt(encrypted string, passphrase string) ([]byte, error)
 }
 
+// HashStringToString takes a string as input and returns its SHA3-256 hash as a hexadecimal string.
+func HashStringToString(data string) string {
+	hashArray := sha3.Sum256([]byte(data))
+	return hex.EncodeToString(hashArray[:])
+}
+
 // HashString calculates the SHA3-256 hash of the input string.
 // It takes a string as input and returns a fixed-size array of 32 bytes.
 func HashString(data string) [32]byte {
