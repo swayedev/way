@@ -195,6 +195,10 @@ func (c *Context) DeleteSessionValue(name string) {
 	c.DeleteSession(name)
 }
 
+func (c *Context) HashStringToString(value string) string {
+	return crypto.HashStringToString(value)
+}
+
 func (c *Context) HashString(value string) [32]byte {
 	return crypto.HashString(value)
 }
