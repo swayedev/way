@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/swayedev/way.svg)](https://pkg.go.dev/github.com/swayedev/way)
 
-_Version: 0.2.3_
+_Version: 0.2.4_
 
 **Note.** Currently there is no stable version of Way during it's inital development.
 Do not use this project in it's current state, please wait until a version number committed is higher than or equal to _1.0.0_
@@ -81,7 +81,11 @@ w.POST("/path", yourPostHandler)
 ## Database Operations
 
 ### Passing an existing sql db
+
+This section explains how to pass an existing SQL database to the application. It provides instructions and guidelines on how to configure the application to use an existing database instead of creating a new one.
+
 ```go
+
 
 ```
 
