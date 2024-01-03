@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/swayedev/way/crypto"
 )
 
 type Context struct {
@@ -21,6 +22,10 @@ type Context struct {
 
 func NewContext(d *DB, w http.ResponseWriter, r *http.Request) *Context {
 	return &Context{Response: w, Request: r, db: d}
+}
+
+func (c *Context) GetDB() *DB {
+	return c.db
 }
 
 func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
@@ -139,5 +144,69 @@ func (c *Context) ProxyMedia(mediaURL string) {
 	// Stream the content
 	c.Response.WriteHeader(resp.StatusCode)
 	io.Copy(c.Response, resp.Body)
+}
 
+func (c *Context) SetCookie(cookie *http.Cookie) {
+	http.SetCookie(c.Response, cookie)
+}
+
+func (c *Context) GetCookie(name string) (*http.Cookie, error) {
+	return c.Request.Cookie(name)
+}
+
+func (c *Context) DeleteCookie(name string) {
+	c.SetCookie(&http.Cookie{
+		Name:   name,
+		MaxAge: -1,
+	})
+}
+
+func (c *Context) GetSession(name string) (*http.Cookie, error) {
+	return c.Request.Cookie(name)
+}
+
+func (c *Context) SetSession(cookie *http.Cookie) {
+	http.SetCookie(c.Response, cookie)
+}
+
+func (c *Context) DeleteSession(name string) {
+	c.SetSession(&http.Cookie{
+		Name:   name,
+		MaxAge: -1,
+	})
+}
+
+func (c *Context) GetSessionValue(name string) (string, error) {
+	cookie, err := c.GetSession(name)
+	if err != nil {
+		return "", err
+	}
+	return cookie.Value, nil
+}
+
+func (c *Context) SetSessionValue(name string, value string) {
+	c.SetSession(&http.Cookie{
+		Name:  name,
+		Value: value,
+	})
+}
+
+func (c *Context) DeleteSessionValue(name string) {
+	c.DeleteSession(name)
+}
+
+func (c *Context) HashString(value string) [32]byte {
+	return crypto.HashString(value)
+}
+
+func (c *Context) HashByte(value []byte) [32]byte {
+	return crypto.HashByte(value)
+}
+
+func (c *Context) Encrypt(data []byte, passphrase string) (string, error) {
+	return crypto.Encrypt(data, passphrase)
+}
+
+func (c *Context) Decrypt(encrypted string, passphrase string) ([]byte, error) {
+	return crypto.Decrypt(encrypted, passphrase)
 }
