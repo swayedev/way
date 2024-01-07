@@ -1,5 +1,7 @@
 # Way Framework
 
+![Way Mascot](./way_mascot_ai_generated.png)
+
 [![Go Reference](https://pkg.go.dev/badge/github.com/swayedev/way.svg)](https://pkg.go.dev/github.com/swayedev/way)
 
 _Version: 0.2.6_
