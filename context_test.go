@@ -1,18 +1,43 @@
-package way_test
+package way
 
 import (
 	"net/http"
 	"testing"
-
-	"github.com/swayedev/way"
 )
 
-// MockResponseWriter is a mock implementation of http.ResponseWriter
+func TestNewContext(t *testing.T) {
+	// Create a mock DB and Session
+	mockDB := &DB{}
+	mockSession := &Session{}
+
+	// Create a mock http.ResponseWriter and http.Request
+	mockResponseWriter := &MockResponseWriter{}
+	mockRequest := &http.Request{}
+
+	// Call the NewContext function
+	context := NewContext(mockResponseWriter, mockRequest, mockDB, mockSession)
+
+	// Check if the ResponseWriter, Request, db, and Session fields are set correctly
+	if context.Response != mockResponseWriter {
+		t.Errorf("NewContext() Response field = %v; want %v", context.Response, mockResponseWriter)
+	}
+	if context.Request != mockRequest {
+		t.Errorf("NewContext() Request field = %v; want %v", context.Request, mockRequest)
+	}
+	if context.db != mockDB {
+		t.Errorf("NewContext() db field = %v; want %v", context.db, mockDB)
+	}
+	if context.Session != mockSession {
+		t.Errorf("NewContext() Session field = %v; want %v", context.Session, mockSession)
+	}
+}
+
+// MockResponseWriter is a mock implementation of http.ResponseWriter for testing purposes
 type MockResponseWriter struct {
 }
 
 func (m *MockResponseWriter) Header() http.Header {
-	return nil
+	return http.Header{}
 }
 
 func (m *MockResponseWriter) Write([]byte) (int, error) {
@@ -20,33 +45,4 @@ func (m *MockResponseWriter) Write([]byte) (int, error) {
 }
 
 func (m *MockResponseWriter) WriteHeader(int) {
-}
-
-func TestNewContext(t *testing.T) {
-	// Create a mock DB object
-	mockDB := &way.DB{}
-
-	// Create a mock http.ResponseWriter
-	mockResponseWriter := &MockResponseWriter{}
-
-	// Create a mock http.Request
-	mockRequest := &http.Request{}
-
-	// Call the NewContext function
-	context := way.NewContext(mockDB, mockResponseWriter, mockRequest)
-
-	// Check if the ResponseWriter is set correctly
-	if context.Response != mockResponseWriter {
-		t.Errorf("NewContext() ResponseWriter = %v; want %v", context.Response, mockResponseWriter)
-	}
-
-	// Check if the Request is set correctly
-	if context.Request != mockRequest {
-		t.Errorf("NewContext() Request = %v; want %v", context.Request, mockRequest)
-	}
-
-	// Check if the db is set correctly
-	if context.GetDB() != mockDB {
-		t.Errorf("NewContext() DB = %v; want %v", context.GetDB(), mockDB)
-	}
 }

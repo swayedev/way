@@ -9,23 +9,42 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/swayedev/way/crypto"
 )
 
+// Response is the standard go HTTP response writer.
+// Request is the standard go HTTP request.
+// db is the way database connection.
+// Session is the way session.
 type Context struct {
 	Response http.ResponseWriter
 	Request  *http.Request
 	db       *DB
+	Session  *Session
 }
 
-func NewContext(d *DB, w http.ResponseWriter, r *http.Request) *Context {
-	return &Context{Response: w, Request: r, db: d}
+func NewContext(w http.ResponseWriter, r *http.Request, d *DB, s *Session) *Context {
+	return &Context{Response: w, Request: r, db: d, Session: s}
+}
+
+func (c *Context) SetSession(s *Session) {
+	c.Session = s
 }
 
 func (c *Context) GetDB() *DB {
 	return c.db
+}
+
+func (c *Context) GetSession(name string) sessions.Store {
+	return c.Session.stores[name]
+}
+
+func (c *Context) Parms() map[string]string {
+	return mux.Vars(c.Request)
 }
 
 func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
@@ -161,39 +180,39 @@ func (c *Context) DeleteCookie(name string) {
 	})
 }
 
-func (c *Context) GetSession(name string) (*http.Cookie, error) {
-	return c.Request.Cookie(name)
-}
+// func (c *Context) GetSession(name string) (*http.Cookie, error) {
+// 	return c.Request.Cookie(name)
+// }
 
-func (c *Context) SetSession(cookie *http.Cookie) {
-	http.SetCookie(c.Response, cookie)
-}
+// func (c *Context) SetSession(cookie *http.Cookie) {
+// 	http.SetCookie(c.Response, cookie)
+// }
 
-func (c *Context) DeleteSession(name string) {
-	c.SetSession(&http.Cookie{
-		Name:   name,
-		MaxAge: -1,
-	})
-}
+// func (c *Context) DeleteSession(name string) {
+// 	c.SetSession(&http.Cookie{
+// 		Name:   name,
+// 		MaxAge: -1,
+// 	})
+// }
 
-func (c *Context) GetSessionValue(name string) (string, error) {
-	cookie, err := c.GetSession(name)
-	if err != nil {
-		return "", err
-	}
-	return cookie.Value, nil
-}
+// func (c *Context) GetSessionValue(name string) (string, error) {
+// 	cookie, err := c.GetSession(name)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return cookie.Value, nil
+// }
 
-func (c *Context) SetSessionValue(name string, value string) {
-	c.SetSession(&http.Cookie{
-		Name:  name,
-		Value: value,
-	})
-}
+// func (c *Context) SetSessionValue(name string, value string) {
+// 	c.SetSession(&http.Cookie{
+// 		Name:  name,
+// 		Value: value,
+// 	})
+// }
 
-func (c *Context) DeleteSessionValue(name string) {
-	c.DeleteSession(name)
-}
+// func (c *Context) DeleteSessionValue(name string) {
+// 	c.DeleteSession(name)
+// }
 
 func (c *Context) HashStringToString(value string) string {
 	return crypto.HashStringToString(value)

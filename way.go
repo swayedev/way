@@ -7,12 +7,15 @@ import (
 	"sync"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
 )
 
 type Way struct {
 	startupMutex sync.RWMutex
 	db           *DB
 	router       *mux.Router
+	sessions     Session
 	Server       *http.Server
 	Listener     net.Listener
 }
@@ -21,31 +24,32 @@ type HandlerFunc func(*Context)
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
 func New() *Way {
+	stores := map[string]sessions.Store{}
+	secureCookies := map[string]*securecookie.SecureCookie{}
+	stores["default"] = sessions.NewCookieStore(securecookie.GenerateRandomKey(32))
+	secureCookies["default"] = securecookie.New(
+		securecookie.GenerateRandomKey(32), // Encryption key
+		securecookie.GenerateRandomKey(32), // Authentication key
+	)
+
 	return &Way{
 		db:     new(DB),
 		router: mux.NewRouter(),
 		Server: new(http.Server),
+		sessions: Session{
+			defaultStore:  "default",
+			defaultCookie: "default",
+			stores:        stores,
+			cookies:       secureCookies,
+		},
 	}
-}
-
-// adaptHandler adapts a `HandlerFunc` to `http.HandlerFunc`.
-func adaptHandler(db *DB, handler HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(db, w, r)
-		handler(ctx)
-	}
-}
-
-// handleFuncWithMethod registers a new route with a matcher for the URL path and the HTTP method.
-func (w *Way) handleFuncWithMethod(path string, handler HandlerFunc, method string) {
-	w.router.HandleFunc(path, adaptHandler(w.db, handler)).Methods(method)
 }
 
 // Use adds a middleware to the middleware stack.
 func (w *Way) Use(middleware ...MiddlewareFunc) {
 	w.router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
-			ctx := NewContext(w.db, wr, r)
+			ctx := NewContext(wr, r, w.db, &w.sessions)
 
 			// Create a chain of middleware handlers
 			handler := func(c *Context) {
@@ -63,9 +67,22 @@ func (w *Way) Use(middleware ...MiddlewareFunc) {
 	})
 }
 
+// adaptHandler adapts a `HandlerFunc` to `http.HandlerFunc`.
+func adaptHandler(db *DB, s *Session, handler HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := NewContext(w, r, db, s)
+		handler(ctx)
+	}
+}
+
+// handleFuncWithMethod registers a new route with a matcher for the URL path and the HTTP method.
+func (w *Way) handleFuncWithMethod(path string, handler HandlerFunc, method string) {
+	w.router.HandleFunc(path, adaptHandler(w.db, &w.sessions, handler)).Methods(method)
+}
+
 // HandleFunc registers a new route with a matcher for the URL path.
 func (w *Way) HandleFunc(path string, handler HandlerFunc) {
-	w.router.HandleFunc(path, adaptHandler(w.db, handler))
+	w.router.HandleFunc(path, adaptHandler(w.db, &w.sessions, handler))
 }
 
 // GET is a shortcut for `HandleFunc(path, handler)` for the "GET" method.
@@ -103,6 +120,15 @@ func (w *Way) HEAD(path string, handler HandlerFunc) {
 	w.handleFuncWithMethod(path, handler, "HEAD")
 }
 
+// newListener creates a new net.Listener.
+func newListener(network, address string) (net.Listener, error) {
+	l, err := net.Listen(network, address)
+	if err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
 // Start starts the server.
 func (w *Way) Start(address string) error {
 	var err error
@@ -131,15 +157,6 @@ func (w *Way) Shutdown(ctx context.Context) error {
 	w.startupMutex.Lock()
 	defer w.startupMutex.Unlock()
 	return w.Server.Shutdown(ctx)
-}
-
-// newListener creates a new net.Listener.
-func newListener(network, address string) (net.Listener, error) {
-	l, err := net.Listen(network, address)
-	if err != nil {
-		return nil, err
-	}
-	return l, nil
 }
 
 // DB Functions
