@@ -4,7 +4,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/swayedev/way.svg)](https://pkg.go.dev/github.com/swayedev/way)
 
-_Version: 0.2.7-rc0_
+_Version: 0.2.7-rc1_
 
 **Note.** Currently there is no stable version of Way during it's inital development.
 Do not use this project in it's current state, please wait until a version number committed is higher than or equal to _1.0.0_

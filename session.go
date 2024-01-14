@@ -90,23 +90,47 @@ func (w *Session) SetDefaultCookie(s *securecookie.SecureCookie) {
 func (w *Session) CreateEncryptedCookie(
 	wr http.ResponseWriter,
 	name string,
+	cookieName string,
 	value map[string]interface{},
 	path string,
 	maxAge int,
 	httpOnly bool,
 	secure bool) (*http.Cookie, error) {
-	return CreateEncryptedCookie(wr, *w.cookies[name], name, value, path, maxAge, httpOnly, secure)
-}
-
-func (w *Session) ReadEncryptedCookie(r *http.Request, name string) (map[string]string, error) {
-	return ReadEncryptedCookie(r, *w.cookies[name], name)
+	return CreateEncryptedCookie(wr, *w.cookies[name], cookieName, value, path, maxAge, httpOnly, secure)
 }
 
 func (w *Session) CreateEncryptedCookieWithDefaults(
 	wr http.ResponseWriter,
 	name string,
+	cookieName string,
 	value map[string]interface{}) (*http.Cookie, error) {
-	return CreateEncryptedCookieWithDefaults(wr, *w.cookies[name], name, value)
+	return CreateEncryptedCookieWithDefaults(wr, *w.cookies[name], cookieName, value)
+}
+
+func (w *Session) CreateDefaultEncryptedCookie(
+	wr http.ResponseWriter,
+	cookieName string,
+	value map[string]interface{},
+	path string,
+	maxAge int,
+	httpOnly bool,
+	secure bool) (*http.Cookie, error) {
+	return CreateEncryptedCookie(wr, *w.cookies[w.defaultCookie], cookieName, value, path, maxAge, httpOnly, secure)
+}
+
+func (w *Session) CreateDefaultEncryptedCookieWithDefaults(
+	wr http.ResponseWriter,
+	cookieName string,
+	value map[string]interface{}) (*http.Cookie, error) {
+	return CreateEncryptedCookieWithDefaults(wr, *w.cookies[w.defaultCookie], cookieName, value)
+}
+
+func (w *Session) ReadEncryptedCookie(r *http.Request, name string, cookieName string) (map[string]string, error) {
+	return ReadEncryptedCookie(r, *w.cookies[name], cookieName)
+}
+
+func (w *Session) ReadDefaultEncryptedCookie(r *http.Request, name string, cookieName string) (map[string]string, error) {
+	return ReadEncryptedCookie(r, *w.cookies[w.defaultCookie], cookieName)
 }
 
 func CreateEncryptedCookie(

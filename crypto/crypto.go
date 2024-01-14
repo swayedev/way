@@ -7,13 +7,23 @@ import (
 	"encoding/hex"
 	"io"
 
+	"log"
+
 	"golang.org/x/crypto/sha3"
 )
 
+// Crypto is an interface that defines cryptographic operations.
 type Crypto interface {
+	// HashString calculates the hash of a string and returns a fixed-size byte array.
 	HashString(data string) [32]byte
+
+	// HashByte calculates the hash of a byte slice and returns a fixed-size byte array.
 	HashByte(data []byte) [32]byte
+
+	// Encrypt encrypts the given byte slice using the provided passphrase and returns the encrypted data as a string.
 	Encrypt(data []byte, passphrase string) (string, error)
+
+	// Decrypt decrypts the given encrypted string using the provided passphrase and returns the decrypted data as a byte slice.
 	Decrypt(encrypted string, passphrase string) ([]byte, error)
 }
 
@@ -73,4 +83,16 @@ func Decrypt(encrypted string, passphrase string) ([]byte, error) {
 	nonceSize := gcm.NonceSize()
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	return gcm.Open(nil, nonce, ciphertext, nil)
+}
+
+// GenerateRandomKey generates a random key of the specified length.
+// It uses the crypto/rand package to generate random bytes and returns the key as a byte slice.
+// If an error occurs during the generation process, it logs the error and returns nil.
+func GenerateRandomKey(length int) []byte {
+	key := make([]byte, length)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		log.Printf("failed to generate random key: " + err.Error())
+		return nil
+	}
+	return key
 }
