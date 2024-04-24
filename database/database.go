@@ -7,11 +7,11 @@ import (
 )
 
 func Connect() (interface{}, error) {
-	switch config.GetDbType() {
-	case "postgres":
+	if config.GetDbType() == "pgx" {
 		return wayPgx.Connect()
 	}
-	return waySql.Connect()
+
+	return waySql.Connect("", "")
 }
 
 // TODO - Set up a way to pass in a struct and have it automatically
