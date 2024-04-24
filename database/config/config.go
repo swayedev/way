@@ -7,7 +7,9 @@ import (
 
 var ports = map[string]string{
 	"mysql":    "3306",
+	"sqlite3":  "",
 	"postgres": "5432",
+	"pgx":      "5432",
 }
 
 func GetDbType() string {
@@ -16,6 +18,14 @@ func GetDbType() string {
 	}
 	log.Println("Environment variable WAY_DB_TYPE is not set")
 	return "mysql"
+}
+
+func GetDbUri() string {
+	if uri := os.Getenv("WAY_DB_URI"); uri != "" {
+		return uri
+	}
+	log.Println("Environment variable WAY_DB_URI is not set")
+	return ""
 }
 
 func GetDbUser() string {

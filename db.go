@@ -19,29 +19,39 @@ type DB struct {
 }
 
 func (d *DB) New(db interface{}) {
-	switch db.(type) {
+	switch v := db.(type) {
 	case *sql.DB:
-		d.SqlNew(db.(*sql.DB))
+		d.SqlNew(v, "sql")
 	case *pgx.Conn:
-		d.PgxNew(db.(*pgx.Conn))
+		d.PgxNew(v)
 	}
 }
 
 func (d *DB) Open() error {
 	switch d.Driver {
-	case "postgres":
+	case "pgx":
 		return d.PgxOpen()
+	case "postgres":
+		fallthrough
+	case "sql":
+		fallthrough
 	case "mysql":
-		return d.SqlOpen()
+		fallthrough
+	case "sqlite3":
+		return d.SqlOpen(d.Driver, "")
 	}
 	return nil
 }
 
 func (d *DB) Close() error {
 	switch d.Driver {
-	case "postgres":
+	case "pgx":
 		return d.PgxClose()
+	case "postgres":
+		fallthrough
 	case "mysql":
+		fallthrough
+	case "sqlite3":
 		return d.SqlClose()
 	}
 	return nil
@@ -49,9 +59,13 @@ func (d *DB) Close() error {
 
 func (d *DB) Exec(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
 	switch d.Driver {
-	case "postgres":
+	case "pgx":
 		return d.PgxExec(ctx, query, args...)
+	case "postgres":
+		fallthrough
 	case "mysql":
+		fallthrough
+	case "sqlite3":
 		return d.SqlExec(ctx, query, args...)
 	}
 	return nil, errors.New("database driver is not initialized")
@@ -59,9 +73,13 @@ func (d *DB) Exec(ctx context.Context, query string, args ...interface{}) (inter
 
 func (d *DB) ExecNoResult(ctx context.Context, query string, args ...interface{}) error {
 	switch d.Driver {
-	case "postgres":
+	case "pgx":
 		return d.PgxExecNoResult(ctx, query, args...)
+	case "postgres":
+		fallthrough
 	case "mysql":
+		fallthrough
+	case "sqlite3":
 		return d.SqlExecNoResult(ctx, query, args...)
 	}
 	return errors.New("database driver is not initialized")
@@ -69,9 +87,13 @@ func (d *DB) ExecNoResult(ctx context.Context, query string, args ...interface{}
 
 func (d *DB) Query(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
 	switch d.Driver {
-	case "postgres":
+	case "pgx":
 		return d.PgxQuery(ctx, query, args...)
+	case "postgres":
+		fallthrough
 	case "mysql":
+		fallthrough
+	case "sqlite3":
 		return d.SqlQuery(ctx, query, args...)
 	}
 	return nil, errors.New("database driver is not initialized")
@@ -79,9 +101,13 @@ func (d *DB) Query(ctx context.Context, query string, args ...interface{}) (inte
 
 func (d *DB) QueryRow(ctx context.Context, query string, args ...interface{}) interface{} {
 	switch d.Driver {
-	case "postgres":
+	case "pgx":
 		return d.PgxQueryRow(ctx, query, args...)
+	case "postgres":
+		fallthrough
 	case "mysql":
+		fallthrough
+	case "sqlite3":
 		return d.SqlQueryRow(ctx, query, args...)
 	}
 	return nil
@@ -92,20 +118,22 @@ func (d *DB) Sql() *sql.DB {
 	return d.sql
 }
 
-func (d *DB) SqlNew(db *sql.DB) {
+func (d *DB) SqlNew(db *sql.DB, driver string) {
 	d.sql = db
-	d.Driver = "mysql"
+	// mysql, sqlite3, postgres
+	d.Driver = driver
 }
 
-func (d *DB) SqlOpen() error {
-	db, err := waySql.Connect()
+func (d *DB) SqlOpen(driver string, uri string) error {
+	d.Driver = driver
+
+	db, err := waySql.Connect(driver, uri)
 	if err != nil {
 		log.Println("Failed to open database connection:", err)
 		return err
 	}
 
 	d.sql = db
-	d.Driver = "mysql"
 	return nil
 }
 
