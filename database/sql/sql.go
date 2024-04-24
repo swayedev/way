@@ -21,19 +21,19 @@ func Connect(driver string, uri string) (*sql.DB, error) {
 		driver = config.GetDbType()
 	}
 
-	if uri == "" && config.GetDbUri() == "" {
+	if uri == "" && config.GetDbUri() != "" {
+		uri = config.GetDbUri()
+	}
+
+	if uri == "" {
 		switch driver {
 		case "postgres":
 			uri = fmt.Sprintf("postgres://%s:%s@%s:%s/%s", config.GetDbUser(), config.GetDbPassword(), config.GetDbHost(), config.GetDbPort(), config.GetDbName())
 		case "mysql":
 			uri = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", config.GetDbUser(), config.GetDbPassword(), config.GetDbHost(), config.GetDbPort(), config.GetDbName())
 		case "sqlite3":
-			uri = fmt.Sprintf("%s", config.GetDbName())
+			uri = config.GetDbName()
 		}
-	}
-
-	if uri == "" {
-		uri = config.GetDbUri()
 	}
 
 	sqlDriver := driver
