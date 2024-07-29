@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -59,20 +58,10 @@ func (d *DB) Pgx() *pgx.Conn {
 }
 
 func (d *DB) Open(dsn string) error {
-	switch d.Driver {
-	case "pgx":
+	if d.UsePgx {
 		return d.PgxOpen(dsn)
-	case "postgres":
-		fallthrough
-	case "sql":
-		fallthrough
-	case "mysql":
-		fallthrough
-	case "sqlite3":
-		return d.SqlOpen(d.Driver, dsn)
-	default:
-		return fmt.Errorf("database driver is not initialized")
 	}
+	return d.SqlOpen(d.Driver, dsn)
 }
 
 func (d *DB) PgxOpen(dsn string) error {
@@ -99,17 +88,11 @@ func (d *DB) SqlOpen(driver, dsn string) error {
 }
 
 func (d *DB) Close() error {
-	switch d.Driver {
-	case "pgx":
+	if d.UsePgx {
 		return d.PgxClose()
-	case "postgres":
-		fallthrough
-	case "mysql":
-		fallthrough
-	case "sqlite3":
-		return d.SqlClose()
 	}
-	return nil
+
+	return d.SqlClose()
 }
 
 func (d *DB) PgxClose() error {
@@ -127,17 +110,11 @@ func (d *DB) SqlClose() error {
 }
 
 func (d *DB) Exec(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
-	switch d.Driver {
-	case "pgx":
+	if d.UsePgx {
 		return d.PgxExec(ctx, query, args...)
-	case "postgres":
-		fallthrough
-	case "mysql":
-		fallthrough
-	case "sqlite3":
-		return d.SqlExec(ctx, query, args...)
 	}
-	return nil, errors.New("database driver is not initialized")
+
+	return d.SqlExec(ctx, query, args...)
 }
 
 func (d *DB) PgxExec(ctx context.Context, query string, args ...interface{}) (pgconn.CommandTag, error) {
@@ -149,17 +126,11 @@ func (d *DB) SqlExec(ctx context.Context, query string, args ...interface{}) (sq
 }
 
 func (d *DB) ExecNoResult(ctx context.Context, query string, args ...interface{}) error {
-	switch d.Driver {
-	case "pgx":
+	if d.UsePgx {
 		return d.PgxExecNoResult(ctx, query, args...)
-	case "postgres":
-		fallthrough
-	case "mysql":
-		fallthrough
-	case "sqlite3":
-		return d.SqlExecNoResult(ctx, query, args...)
 	}
-	return errors.New("database driver is not initialized")
+
+	return d.SqlExecNoResult(ctx, query, args...)
 }
 
 func (d *DB) PgxExecNoResult(ctx context.Context, query string, args ...interface{}) error {
@@ -171,17 +142,10 @@ func (d *DB) SqlExecNoResult(ctx context.Context, query string, args ...interfac
 }
 
 func (d *DB) Query(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
-	switch d.Driver {
-	case "pgx":
+	if d.UsePgx {
 		return d.PgxQuery(ctx, query, args...)
-	case "postgres":
-		fallthrough
-	case "mysql":
-		fallthrough
-	case "sqlite3":
-		return d.SqlQuery(ctx, query, args...)
 	}
-	return nil, errors.New("database driver is not initialized")
+	return d.SqlQuery(ctx, query, args...)
 }
 
 func (d *DB) PgxQuery(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
@@ -193,17 +157,10 @@ func (d *DB) SqlQuery(ctx context.Context, query string, args ...interface{}) (*
 }
 
 func (d *DB) QueryRow(ctx context.Context, query string, args ...interface{}) interface{} {
-	switch d.Driver {
-	case "pgx":
+	if d.UsePgx {
 		return d.PgxQueryRow(ctx, query, args...)
-	case "postgres":
-		fallthrough
-	case "mysql":
-		fallthrough
-	case "sqlite3":
-		return d.SqlQueryRow(ctx, query, args...)
 	}
-	return nil
+	return d.SqlQueryRow(ctx, query, args...)
 }
 
 func (d *DB) PgxQueryRow(ctx context.Context, query string, args ...interface{}) pgx.Row {
@@ -220,11 +177,6 @@ func (d *DB) SetDriver(driver string, usePgx bool) {
 
 func (d *DB) SetDSN(driver, dsn, dbName, dbHost, dbPort, dbUser, dbPass string) string {
 	return CheckDSN(driver, dsn, dbName, dbHost, dbPort, dbUser, dbPass)
-}
-
-func (d *DB) Connect(driver, dsn string) (interface{}, error) {
-
-	return Connect(driver, dsn)
 }
 
 func (d *DB) CheckDriver() {
@@ -248,21 +200,27 @@ func CheckDriver(driver string) string {
 }
 
 func SetDBDriver(driver string, usePgx bool) string {
-	switch {
-	case driver == "postgres" && usePgx, driver == "pgx":
-		// if driver is set to "postgres" and usePGX is true return "pgx"
-		return "pgx"
-	case driver == "postgres" && !usePgx:
-		// if driver is set to "postgres" and usePGX is false return "postgres"
+	switch driver {
+	case "postgres", "cockroachdb":
+		if usePgx {
+			return "pgx"
+		}
 		return "postgres"
-	case driver == "mysql", driver == "sql":
-		// if driver is set to "mysql" or "sql" return "mysql"
+	case "pgx":
+		return "pgx"
+	case "mysql", "sql":
 		return "mysql"
-	case driver == "sqlite", driver == "sqlite3":
-		// if driver is set to "sqlite" or "sqlite3" return "sqlite3"
+	case "sqlite", "sqlite3":
 		return "sqlite3"
+	case "clickhouse", "ch":
+		return "clickhouse"
+	case "firebirdsql", "firebird":
+		return "firebirdsql"
+	case "godror", "oracle":
+		return "godror"
+	case "sqlserver", "mssql":
+		return "sqlserver"
 	default:
-		// if driver is not set, return blank driver
 		return ""
 	}
 }
@@ -282,6 +240,14 @@ func setDBDSN(driver, dbName, dbHost, dbPort, dbUser, dbPass string) string {
 		return setMysqlDSN(dbUser, dbPass, dbHost, dbPort, dbName)
 	case "sqlite3":
 		return setSqliteDSN(dbName, dbHost)
+	case "clickhouse":
+		return setClickhouseDSN(dbUser, dbPass, dbHost, dbPort, dbName)
+	case "firebirdsql":
+		return setFirebirdDSN(dbUser, dbPass, dbHost, dbPort, dbName)
+	case "godror":
+		return setOracleDSN(dbUser, dbPass, dbHost, dbPort, dbName)
+	case "sqlserver":
+		return setSQLServerDSN(dbUser, dbPass, dbHost, dbPort, dbName)
 	default:
 		return ""
 	}
@@ -293,6 +259,22 @@ func setPostgresDSN(dbName, dbHost, dbPort, dbUser, dbPass string) string {
 
 func setMysqlDSN(dbName, dbHost, dbPort, dbUser, dbPass string) string {
 	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", dbUser, dbPass, dbHost, dbPort, dbName)
+}
+
+func setClickhouseDSN(dbUser, dbPass, dbHost, dbPort, dbName string) string {
+	return fmt.Sprintf("tcp://%s:%s@%s:%s/%s", dbUser, dbPass, dbHost, dbPort, dbName)
+}
+
+func setFirebirdDSN(dbUser, dbPass, dbHost, dbPort, dbName string) string {
+	return fmt.Sprintf("%s:%s@%s:%s/%s", dbUser, dbPass, dbHost, dbPort, dbName)
+}
+
+func setOracleDSN(dbUser, dbPass, dbHost, dbPort, dbName string) string {
+	return fmt.Sprintf("%s/%s@%s:%s/%s", dbUser, dbPass, dbHost, dbPort, dbName)
+}
+
+func setSQLServerDSN(dbUser, dbPass, dbHost, dbPort, dbName string) string {
+	return fmt.Sprintf("sqlserver://%s:%s@%s:%s?database=%s", dbUser, dbPass, dbHost, dbPort, dbName)
 }
 
 func setSqliteDSN(dbName, dbHost string) string {
