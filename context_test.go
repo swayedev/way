@@ -17,7 +17,7 @@ func TestNewContext(t *testing.T) {
 	mockRequest := &http.Request{}
 
 	// Call the NewContext function
-	context := NewContext(mockResponseWriter, mockRequest, mockDB, mockSession)
+	context := NewContext(mockResponseWriter, mockRequest, mockDB, mockSession, nil)
 
 	// Check if the ResponseWriter, Request, db, and Session fields are set correctly
 	if context.Response != mockResponseWriter {

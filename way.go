@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/swayedev/way/database"
 
@@ -126,7 +127,7 @@ func (w *Way) SetSession(s *Session) {
 func (w *Way) Use(middleware ...MiddlewareFunc) {
 	w.router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
-			ctx := NewContext(wr, r, w.db, w.sessions)
+			ctx := NewContext(wr, r, w.db, w.sessions, w.Logger)
 
 			handler := func(c *Context) {
 				next.ServeHTTP(wr, r)
@@ -142,21 +143,23 @@ func (w *Way) Use(middleware ...MiddlewareFunc) {
 }
 
 // adaptHandler adapts a HandlerFunc to http.HandlerFunc.
-func adaptHandler(db *database.DB, s *Session, handler HandlerFunc) http.HandlerFunc {
+func adaptHandler(db *database.DB, s *Session, l *log.Logger, handler HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(w, r, db, s)
+		ctx := NewContext(w, r, db, s, l)
 		handler(ctx)
 	}
 }
 
 // handleFuncWithMethod registers a new route with a matcher for the URL path and the HTTP method.
 func (w *Way) handleFuncWithMethod(path string, handler HandlerFunc, method string) {
-	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, handler)).Methods(method)
+	w.Logger.Printf("Registering route %s", path)
+	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, w.Logger, handler)).Methods(method)
 }
 
 // HandleFunc registers a new route with a matcher for the URL path.
 func (w *Way) HandleFunc(path string, handler HandlerFunc) {
-	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, handler))
+	w.Logger.Printf("Registering route %s", path)
+	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, w.Logger, handler))
 }
 
 // HTTP method shortcuts
@@ -187,26 +190,40 @@ func (w *Way) Start(address string) error {
 	if err != nil {
 		return err
 	}
-	w.Server.Handler = w.router
+	w.Server.Handler = loggingMiddleware(w.Logger, w.router)
+	w.Logger.Printf("Server started at %s", address)
+	asciiArt := `
+	__        ______   __
+	\ \      / /  \ \ / /
+	 \ \ /\ / / /\ \ V / 
+	  \ V  V / /__\ | |  
+	   \_/\_/_/----\|_|  
+	`
+	w.Log().Println(asciiArt)
 	return w.Server.Serve(w.Listener)
 }
 
 // Close immediately stops the server.
 func (w *Way) Close() error {
+	w.Logger.Println("Server stopping...")
 	w.startupMutex.Lock()
 	defer w.startupMutex.Unlock()
+	w.Logger.Println("Server stopped")
 	return w.Server.Close()
 }
 
 // Shutdown stops the server gracefully.
 func (w *Way) Shutdown(ctx context.Context) error {
+	w.Logger.Println("Server stopping gracefully...")
 	w.startupMutex.Lock()
 	defer w.startupMutex.Unlock()
+	w.Logger.Println("Server stopped gracefully")
 	return w.Server.Shutdown(ctx)
 }
 
 // Db returns the database instance.
 func (w *Way) Db() *database.DB {
+	w.Logger.Println("Database instance returned")
 	return w.db
 }
 
@@ -242,7 +259,15 @@ const (
 
 // defaultLogger returns a new logger that writes to os.Stdout.
 func defaultLogger() *log.Logger {
-	return log.New(os.Stdout, GetEnv(envDefaultLogger, "WAY_INFO"), log.LstdFlags)
+	return log.New(os.Stdout, GetEnv(envDefaultLogger, "WAY_INFO")+": ", log.LstdFlags)
+}
+
+func loggingMiddleware(logger *log.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		logger.Printf("method=%s path=%s duration=%s", r.Method, r.URL.Path, time.Since(start))
+	})
 }
 
 // useDefaultSession checks if the default session should be used.
