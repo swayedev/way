@@ -3,11 +3,13 @@ package way
 import (
 	"net/http"
 	"testing"
+
+	"github.com/swayedev/way/database"
 )
 
 func TestNewContext(t *testing.T) {
 	// Create a mock DB and Session
-	mockDB := &DB{}
+	mockDB := &database.DB{}
 	mockSession := &Session{}
 
 	// Create a mock http.ResponseWriter and http.Request

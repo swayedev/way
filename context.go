@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/swayedev/way/crypto"
+	"github.com/swayedev/way/database"
 )
 
 // Response is the standard go HTTP response writer.
@@ -23,11 +24,11 @@ import (
 type Context struct {
 	Response http.ResponseWriter
 	Request  *http.Request
-	db       *DB
+	db       *database.DB
 	Session  *Session
 }
 
-func NewContext(w http.ResponseWriter, r *http.Request, d *DB, s *Session) *Context {
+func NewContext(w http.ResponseWriter, r *http.Request, d *database.DB, s *Session) *Context {
 	return &Context{Response: w, Request: r, db: d, Session: s}
 }
 
@@ -35,7 +36,7 @@ func (c *Context) SetSession(s *Session) {
 	c.Session = s
 }
 
-func (c *Context) GetDB() *DB {
+func (c *Context) GetDB() *database.DB {
 	return c.db
 }
 
