@@ -14,7 +14,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/swayedev/way/crypto"
-	"github.com/swayedev/way/database"
 )
 
 // Response is the standard go HTTP response writer.
@@ -24,12 +23,12 @@ import (
 type Context struct {
 	Response http.ResponseWriter
 	Request  *http.Request
-	db       *database.DB
+	db       *DB
 	Session  *Session
 	Logger   *log.Logger
 }
 
-func NewContext(w http.ResponseWriter, r *http.Request, d *database.DB, s *Session, l *log.Logger) *Context {
+func NewContext(w http.ResponseWriter, r *http.Request, d *DB, s *Session, l *log.Logger) *Context {
 	return &Context{Response: w, Request: r, db: d, Session: s, Logger: l}
 }
 func (c *Context) Log() *log.Logger {
@@ -39,7 +38,7 @@ func (c *Context) SetSession(s *Session) {
 	c.Session = s
 }
 
-func (c *Context) GetDB() *database.DB {
+func (c *Context) GetDB() *DB {
 	return c.db
 }
 
@@ -61,7 +60,7 @@ func (c *Context) Parms() map[string]string {
 
 func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
-	result, err := c.db.SqlExec(ctx, query, args...)
+	result, err := c.db.SQLExec(ctx, query, args...)
 	if err != nil {
 		c.Logger.Printf("Error executing SQL query: %v", err)
 	}
@@ -70,7 +69,7 @@ func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}
 
 func (c *Context) SqlExecNoResult(ctx context.Context, query string, args ...interface{}) error {
 	c.Logger.Printf("Executing SQL query with no result: %s with args: %v", query, args)
-	err := c.db.SqlExecNoResult(ctx, query, args...)
+	err := c.db.SQLExecNoResult(ctx, query, args...)
 	if err != nil {
 		c.Logger.Printf("Error executing SQL query with no result: %v", err)
 	}
@@ -79,7 +78,7 @@ func (c *Context) SqlExecNoResult(ctx context.Context, query string, args ...int
 
 func (c *Context) SqlQuery(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
-	rows, err := c.db.SqlQuery(ctx, query, args...)
+	rows, err := c.db.SQLQuery(ctx, query, args...)
 	if err != nil {
 		c.Logger.Printf("Error executing SQL query: %v", err)
 	}
@@ -88,13 +87,13 @@ func (c *Context) SqlQuery(ctx context.Context, query string, args ...interface{
 
 func (c *Context) SqlQueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
 	c.Logger.Printf("Executing SQL query row: %s with args: %v", query, args)
-	row := c.db.SqlQueryRow(ctx, query, args...)
+	row := c.db.SQLQueryRow(ctx, query, args...)
 	return row
 }
 
 func (c *Context) PgxExec(ctx context.Context, query string, args ...interface{}) (pgconn.CommandTag, error) {
 	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
-	commandTag, err := c.db.PgxExec(ctx, query, args...)
+	commandTag, err := c.db.PGXExec(ctx, query, args...)
 	if err != nil {
 		c.Logger.Printf("Error executing PGX query: %v", err)
 	}
@@ -103,7 +102,7 @@ func (c *Context) PgxExec(ctx context.Context, query string, args ...interface{}
 
 func (c *Context) PgxExecNoResult(ctx context.Context, query string, args ...interface{}) error {
 	c.Logger.Printf("Executing PGX query with no result: %s with args: %v", query, args)
-	err := c.db.PgxExecNoResult(ctx, query, args...)
+	err := c.db.PGXExecNoResult(ctx, query, args...)
 	if err != nil {
 		c.Logger.Printf("Error executing PGX query with no result: %v", err)
 	}
@@ -112,7 +111,7 @@ func (c *Context) PgxExecNoResult(ctx context.Context, query string, args ...int
 
 func (c *Context) PgxQuery(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
 	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
-	rows, err := c.db.PgxQuery(ctx, query, args...)
+	rows, err := c.db.PGXQuery(ctx, query, args...)
 	if err != nil {
 		c.Logger.Printf("Error executing PGX query: %v", err)
 	}
@@ -121,7 +120,7 @@ func (c *Context) PgxQuery(ctx context.Context, query string, args ...interface{
 
 func (c *Context) PgxQueryRow(ctx context.Context, query string, args ...interface{}) pgx.Row {
 	c.Logger.Printf("Executing PGX query row: %s with args: %v", query, args)
-	row := c.db.PgxQueryRow(ctx, query, args...)
+	row := c.db.PGXQueryRow(ctx, query, args...)
 	return row
 }
 

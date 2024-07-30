@@ -21,7 +21,7 @@ type Way struct {
 	// startupMutex is used to synchronize startup operations.
 	startupMutex sync.RWMutex
 	// db is the database connection.
-	db *database.DB
+	db *DB
 	// router is the HTTP request router.
 	router *mux.Router
 	// sessions is the session manager.
@@ -88,14 +88,14 @@ func (w *Way) Log() *log.Logger {
 
 // SetDB sets the database connection for the Way object.
 // It takes a pointer to a DB object as a parameter and assigns it to the db field of the Way object.
-func (w *Way) SetDB(db *database.DB) {
+func (w *Way) SetDB(db *DB) {
 	w.db = db
 }
 
 // InitDBFromConfig initializes the database connection from environment variables.
 func (w *Way) InitDBFromConfig() error {
 	usePGX := GetEnv(envDBUsePGX, "") == "true"
-	driver := database.SetDBDriver(GetEnv(envDBDriver, ""), usePGX)
+	driver := database.CheckDriver(GetEnv(envDBDriver, ""))
 	if driver == "" {
 		return errors.New("database driver is not set")
 	}
@@ -103,17 +103,25 @@ func (w *Way) InitDBFromConfig() error {
 	if dsn == "" {
 		return errors.New("database DSN is not set")
 	}
-	db := database.New()
-	db.UsePgx = usePGX
-	db.Driver = driver
-	db.Open(dsn)
-	w.db = &db
+	if usePGX {
+		db, err := database.PGXConnect(dsn)
+		if err != nil {
+			return err
+		}
+		w.db = &DB{pgx: db, UsePgx: true, Driver: "pgx"}
+		return nil
+	}
+	db, err := database.SQLConnect(driver, dsn)
+	if err != nil {
+		return err
+	}
+	w.db = &DB{sql: db, UsePgx: false, Driver: driver}
 	return nil
 }
 
 // SetDBConnection sets a new database connection with the given driver.
 func (w *Way) SetDBConnection(db interface{}, driver string) {
-	d := database.New()
+	d := NewDB()
 	w.db = &d
 	w.db.SetDB(db, driver)
 }
@@ -143,7 +151,7 @@ func (w *Way) Use(middleware ...MiddlewareFunc) {
 }
 
 // adaptHandler adapts a HandlerFunc to http.HandlerFunc.
-func adaptHandler(db *database.DB, s *Session, l *log.Logger, handler HandlerFunc) http.HandlerFunc {
+func adaptHandler(db *DB, s *Session, l *log.Logger, handler HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := NewContext(w, r, db, s, l)
 		handler(ctx)
@@ -222,7 +230,7 @@ func (w *Way) Shutdown(ctx context.Context) error {
 }
 
 // Db returns the database instance.
-func (w *Way) Db() *database.DB {
+func (w *Way) Db() *DB {
 	w.Logger.Println("Database instance returned")
 	return w.db
 }
