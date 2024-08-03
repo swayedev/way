@@ -1,150 +1,164 @@
 package way
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 )
 
-// defaultStore is the name of the default session store.
-// defaultCookie is the name of the default session cookie.
-// stores is a map of session stores.
-// cookies is a map of secure cookies.
+// Session manages session stores and secure cookies.
 type Session struct {
-	// Name of
-	defaultStore string
-	// Name of secure cookie
+	defaultStore  string
 	defaultCookie string
-	// Map of session stores
-	stores map[string]sessions.Store
-	// Map of secure cookies
-	cookies map[string]*securecookie.SecureCookie
+	stores        map[string]sessions.Store
+	cookies       map[string]*securecookie.SecureCookie
+	logger        *log.Logger
 }
 
-func NewSession() *Session {
+// NewSession initializes a new Session instance.
+func NewSession(logger *log.Logger) *Session {
 	return &Session{
 		defaultStore:  "default",
 		defaultCookie: "default",
 		stores:        make(map[string]sessions.Store),
 		cookies:       make(map[string]*securecookie.SecureCookie),
+		logger:        logger,
 	}
 }
 
-func (w *Session) SetDefaultStoreName(name string) {
-	w.defaultStore = name
+// SetDefaultStoreName sets the default session store name.
+func (s *Session) SetDefaultStoreName(name string) {
+	s.defaultStore = name
 }
 
-func (w *Session) SetDefaultCookieName(name string) {
-	w.defaultCookie = name
+// SetDefaultCookieName sets the default cookie name.
+func (s *Session) SetDefaultCookieName(name string) {
+	s.defaultCookie = name
 }
 
-func (w *Session) Stores() map[string]sessions.Store {
-	return w.stores
+// Stores returns the map of session stores.
+func (s *Session) Stores() map[string]sessions.Store {
+	return s.stores
 }
 
-func (w *Session) Store(name string) sessions.Store {
-	return w.stores[name]
+// Store returns a session store by name.
+func (s *Session) Store(name string) sessions.Store {
+	return s.stores[name]
 }
 
-func (w *Session) SetStore(name string, s sessions.Store) {
-	w.stores[name] = s
+// SetStore sets a session store by name.
+func (s *Session) SetStore(name string, store sessions.Store) {
+	s.stores[name] = store
 }
 
-func (w *Session) DeleteStore(name string) {
-	delete(w.stores, name)
+// DeleteStore deletes a session store by name.
+func (s *Session) DeleteStore(name string) {
+	delete(s.stores, name)
 }
 
-func (w *Session) Cookies() map[string]*securecookie.SecureCookie {
-	return w.cookies
+// Cookies returns the map of secure cookies.
+func (s *Session) Cookies() map[string]*securecookie.SecureCookie {
+	return s.cookies
 }
 
-func (w *Session) Cookie(name string) *securecookie.SecureCookie {
-	return w.cookies[name]
+// Cookie returns a secure cookie by name.
+func (s *Session) Cookie(name string) *securecookie.SecureCookie {
+	return s.cookies[name]
 }
 
-func (w *Session) SetCookie(name string, s *securecookie.SecureCookie) {
-	w.cookies[name] = s
+// SetCookie sets a secure cookie by name.
+func (s *Session) SetCookie(name string, cookie *securecookie.SecureCookie) {
+	s.cookies[name] = cookie
 }
 
-func (w *Session) DeleteCookie(name string) {
-	delete(w.cookies, name)
+// DeleteCookie deletes a secure cookie by name.
+func (s *Session) DeleteCookie(name string) {
+	delete(s.cookies, name)
 }
 
-func (w *Session) DefaultSession() sessions.Store {
-	return w.stores[w.defaultStore]
+// DefaultSession returns the default session store.
+func (s *Session) DefaultSession() sessions.Store {
+	return s.stores[s.defaultStore]
 }
 
-func (w *Session) SetDefaultStore(s sessions.Store) {
-	w.stores[w.defaultStore] = s
+// SetDefaultStore sets the default session store.
+func (s *Session) SetDefaultStore(store sessions.Store) {
+	s.stores[s.defaultStore] = store
 }
 
-func (w *Session) DefaultCookie() *securecookie.SecureCookie {
-	return w.cookies[w.defaultCookie]
+// DefaultCookie returns the default secure cookie.
+func (s *Session) DefaultCookie() *securecookie.SecureCookie {
+	return s.cookies[s.defaultCookie]
 }
 
-func (w *Session) SetDefaultCookie(s *securecookie.SecureCookie) {
-	w.cookies[w.defaultCookie] = s
+// SetDefaultCookie sets the default secure cookie.
+func (s *Session) SetDefaultCookie(cookie *securecookie.SecureCookie) {
+	s.cookies[s.defaultCookie] = cookie
 }
 
-func (w *Session) CreateEncryptedCookie(
-	wr http.ResponseWriter,
-	name string,
+// CreateEncryptedCookie creates an encrypted cookie.
+func (s *Session) CreateEncryptedCookie(
+	w http.ResponseWriter,
+	name, cookieName string,
+	value map[string]interface{},
+	path string,
+	maxAge int,
+	httpOnly, secure bool) (*http.Cookie, error) {
+	return createEncryptedCookie(w, *s.cookies[name], cookieName, value, path, maxAge, httpOnly, secure)
+}
+
+// CreateEncryptedCookieWithDefaults creates an encrypted cookie with default settings.
+func (s *Session) CreateEncryptedCookieWithDefaults(
+	w http.ResponseWriter,
+	name, cookieName string,
+	value map[string]interface{}) (*http.Cookie, error) {
+	return createEncryptedCookieWithDefaults(w, *s.cookies[name], cookieName, value)
+}
+
+// CreateDefaultEncryptedCookie creates an encrypted cookie using the default secure cookie.
+func (s *Session) CreateDefaultEncryptedCookie(
+	w http.ResponseWriter,
 	cookieName string,
 	value map[string]interface{},
 	path string,
 	maxAge int,
-	httpOnly bool,
-	secure bool) (*http.Cookie, error) {
-	return CreateEncryptedCookie(wr, *w.cookies[name], cookieName, value, path, maxAge, httpOnly, secure)
+	httpOnly, secure bool) (*http.Cookie, error) {
+	return createEncryptedCookie(w, *s.cookies[s.defaultCookie], cookieName, value, path, maxAge, httpOnly, secure)
 }
 
-func (w *Session) CreateEncryptedCookieWithDefaults(
-	wr http.ResponseWriter,
-	name string,
+// CreateDefaultEncryptedCookieWithDefaults creates an encrypted cookie with default settings using the default secure cookie.
+func (s *Session) CreateDefaultEncryptedCookieWithDefaults(
+	w http.ResponseWriter,
 	cookieName string,
 	value map[string]interface{}) (*http.Cookie, error) {
-	return CreateEncryptedCookieWithDefaults(wr, *w.cookies[name], cookieName, value)
+	return createEncryptedCookieWithDefaults(w, *s.cookies[s.defaultCookie], cookieName, value)
 }
 
-func (w *Session) CreateDefaultEncryptedCookie(
-	wr http.ResponseWriter,
-	cookieName string,
-	value map[string]interface{},
-	path string,
-	maxAge int,
-	httpOnly bool,
-	secure bool) (*http.Cookie, error) {
-	return CreateEncryptedCookie(wr, *w.cookies[w.defaultCookie], cookieName, value, path, maxAge, httpOnly, secure)
+// ReadEncryptedCookie reads an encrypted cookie.
+func (s *Session) ReadEncryptedCookie(r *http.Request, name, cookieName string) (map[string]string, error) {
+	return readEncryptedCookie(r, *s.cookies[name], cookieName)
 }
 
-func (w *Session) CreateDefaultEncryptedCookieWithDefaults(
-	wr http.ResponseWriter,
-	cookieName string,
-	value map[string]interface{}) (*http.Cookie, error) {
-	return CreateEncryptedCookieWithDefaults(wr, *w.cookies[w.defaultCookie], cookieName, value)
+// ReadDefaultEncryptedCookie reads an encrypted cookie using the default secure cookie.
+func (s *Session) ReadDefaultEncryptedCookie(r *http.Request, cookieName string) (map[string]string, error) {
+	return readEncryptedCookie(r, *s.cookies[s.defaultCookie], cookieName)
 }
 
-func (w *Session) ReadEncryptedCookie(r *http.Request, name string, cookieName string) (map[string]string, error) {
-	return ReadEncryptedCookie(r, *w.cookies[name], cookieName)
-}
-
-func (w *Session) ReadDefaultEncryptedCookie(r *http.Request, name string, cookieName string) (map[string]string, error) {
-	return ReadEncryptedCookie(r, *w.cookies[w.defaultCookie], cookieName)
-}
-
-func CreateEncryptedCookie(
+// createEncryptedCookie creates an encrypted cookie.
+func createEncryptedCookie(
 	w http.ResponseWriter,
 	secureCookie securecookie.SecureCookie,
 	name string,
 	value map[string]interface{},
 	path string,
 	maxAge int,
-	httpOnly bool,
-	secure bool) (*http.Cookie, error) {
+	httpOnly, secure bool) (*http.Cookie, error) {
 	encoded, err := secureCookie.Encode(name, value)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to encode cookie %s: %w", name, err)
 	}
 	cookie := &http.Cookie{
 		Name:     name,
@@ -154,27 +168,30 @@ func CreateEncryptedCookie(
 		HttpOnly: httpOnly,
 		Secure:   secure,
 	}
+	http.SetCookie(w, cookie)
 	return cookie, nil
 }
 
-func CreateEncryptedCookieWithDefaults(
+// createEncryptedCookieWithDefaults creates an encrypted cookie with default settings.
+func createEncryptedCookieWithDefaults(
 	w http.ResponseWriter,
 	secureCookie securecookie.SecureCookie,
 	name string,
 	value map[string]interface{}) (*http.Cookie, error) {
-	return CreateEncryptedCookie(w, secureCookie, name, value, "/", 36000, true, true)
+	return createEncryptedCookie(w, secureCookie, name, value, "/", 36000, true, true)
 }
 
-func ReadEncryptedCookie(r *http.Request, secureCookie securecookie.SecureCookie, name string) (map[string]string, error) {
+// readEncryptedCookie reads an encrypted cookie.
+func readEncryptedCookie(r *http.Request, secureCookie securecookie.SecureCookie, name string) (map[string]string, error) {
 	cookie, err := r.Cookie(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read cookie %s: %w", name, err)
 	}
 
 	var value map[string]string
-	if err = secureCookie.Decode(name, cookie.Value, &value); err == nil {
-		return value, nil
+	if err = secureCookie.Decode(name, cookie.Value, &value); err != nil {
+		return nil, fmt.Errorf("failed to decode cookie %s: %w", name, err)
 	}
 
-	return nil, err
+	return value, nil
 }

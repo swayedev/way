@@ -2,7 +2,7 @@ package way
 
 import (
 	"context"
-	"errors"
+	"encoding/base64"
 	"log"
 	"net"
 	"net/http"
@@ -11,50 +11,73 @@ import (
 	"time"
 
 	"github.com/swayedev/way/database"
+	"golang.org/x/exp/rand"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 )
 
+// Config holds all configuration parameters.
+type Config struct {
+	DBDriver                string
+	DBUsePGX                bool
+	DBDSN                   string
+	DBUser                  string
+	DBPassword              string
+	DBHost                  string
+	DBPort                  string
+	DBName                  string
+	StoreName               string
+	StoreEncryptionKey      string
+	CookieName              string
+	CookieEncryptionKey     string
+	CookieAuthenticationKey string
+	DefaultLogger           string
+}
+
+// Way is the main framework structure.
 type Way struct {
-	// startupMutex is used to synchronize startup operations.
 	startupMutex sync.RWMutex
-	// db is the database connection.
-	db *DB
-	// router is the HTTP request router.
-	router *mux.Router
-	// sessions is the session manager.
-	sessions *Session
-	// Server is the HTTP server.
-	Server *http.Server
-	// Listener is the network listener.
-	Listener net.Listener
-	// Logger is the logger.
-	Logger *log.Logger
+	db           *DB
+	router       *mux.Router
+	sessions     *Session
+	Server       *http.Server
+	Listener     net.Listener
+	Logger       *log.Logger
+	Config       *Config
 }
 
 // HandlerFunc is a function type that represents a handler for a request.
-// It takes a *Context parameter, which provides information about the request
-// and allows the handler to generate a response.
 type HandlerFunc func(*Context)
 
 // MiddlewareFunc represents a function that takes a HandlerFunc and returns a modified HandlerFunc.
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
 // New creates a new instance of Way.
-// It initializes the sessions and sets session defaults if necessary.
-// It returns a pointer to the newly created Way instance.
-func New() *Way {
-	sessions := NewSession()
-	if useDefaultSession() {
-		setSessionDefaults(sessions)
+func New(config *Config) *Way {
+	genKeys := false
+	if config == nil {
+		config = defaultConfig()
+		genKeys = true
+	}
+	logger := defaultLogger(config.DefaultLogger)
+	if genKeys {
+		config.StoreEncryptionKey = generateRandomKey(32)
+		config.CookieEncryptionKey = generateRandomKey(32)
+		config.CookieAuthenticationKey = generateRandomKey(32)
+		logger.Println("Generated new encryption keys for store and cookies")
+	}
+	sessions := NewSession(logger)
+	if useDefaultSession(config) {
+		setSessionDefaults(sessions, config)
 	}
 	return &Way{
 		router:   mux.NewRouter(),
-		Server:   new(http.Server),
+		Server:   &http.Server{},
 		sessions: sessions,
-		Logger:   defaultLogger(),
+		Logger:   logger,
+		Config:   config,
 	}
 }
 
@@ -83,40 +106,50 @@ func (w *Way) Log() *log.Logger {
 	if w.Logger != nil {
 		return w.Logger
 	}
-	return defaultLogger()
+	return defaultLogger(w.Config.DefaultLogger)
 }
 
 // SetDB sets the database connection for the Way object.
-// It takes a pointer to a DB object as a parameter and assigns it to the db field of the Way object.
 func (w *Way) SetDB(db *DB) {
 	w.db = db
 }
 
-// InitDBFromConfig initializes the database connection from environment variables.
-func (w *Way) InitDBFromConfig() error {
-	usePGX := GetEnv(envDBUsePGX, "") == "true"
-	driver := database.CheckDriver(GetEnv(envDBDriver, ""))
-	if driver == "" {
-		return errors.New("database driver is not set")
-	}
-	dsn := database.CheckDSN(driver, GetEnv(envDBDSN, ""), GetEnv(envDBName, ""), GetEnv(envDBHost, ""), GetEnv(envDBPort, ""), GetEnv(envDBUser, ""), GetEnv(envDBPassword, ""))
-	if dsn == "" {
-		return errors.New("database DSN is not set")
-	}
-	if usePGX {
-		db, err := database.PGXConnect(dsn)
+func (w *Way) initDBConnection(driver, dsn string) error {
+	if w.Config.DBUsePGX {
+		db, _, err := database.PGXConnect(database.PGXConfig{DSN: dsn, UsePooling: false})
 		if err != nil {
 			return err
 		}
 		w.db = &DB{pgx: db, UsePgx: true, Driver: "pgx"}
 		return nil
 	}
-	db, err := database.SQLConnect(driver, dsn)
+	db, err := database.SQLConnect(database.SQLConfig{Driver: driver, DSN: dsn, UsePooling: false})
 	if err != nil {
 		return err
 	}
 	w.db = &DB{sql: db, UsePgx: false, Driver: driver}
 	return nil
+}
+
+// InitDBFromConfig initializes the database connection from the Config struct.
+func (w *Way) InitDBFromConfig() error {
+	driver, err := database.CheckDriver(w.Config.DBDriver)
+	if err != nil {
+		return err
+	}
+	dsn, err := database.CheckDSN(database.DriverConfig{
+		Driver: w.Config.DBDriver,
+		DSN:    w.Config.DBDSN,
+		DBName: w.Config.DBName,
+		DBHost: w.Config.DBHost,
+		DBPort: w.Config.DBPort,
+		DBUser: w.Config.DBUser,
+		DBPass: w.Config.DBPassword,
+	})
+	if err != nil {
+		return err
+	}
+	return w.initDBConnection(driver, dsn)
 }
 
 // SetDBConnection sets a new database connection with the given driver.
@@ -131,23 +164,24 @@ func (w *Way) SetSession(s *Session) {
 	w.sessions = s
 }
 
-// Use adds a middleware to the middleware stack.
+// Use adds middleware to the middleware stack.
 func (w *Way) Use(middleware ...MiddlewareFunc) {
-	w.router.Use(func(next http.Handler) http.Handler {
+	for _, m := range middleware {
+		w.router.Use(adaptMiddleware(w, m))
+	}
+}
+
+// adaptMiddleware adapts a MiddlewareFunc to mux.MiddlewareFunc.
+func adaptMiddleware(w *Way, m MiddlewareFunc) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
 			ctx := NewContext(wr, r, w.db, w.sessions, w.Logger)
-
-			handler := func(c *Context) {
+			middlewareHandler := m(func(c *Context) {
 				next.ServeHTTP(wr, r)
-			}
-
-			for i := len(middleware) - 1; i >= 0; i-- {
-				handler = middleware[i](handler)
-			}
-
-			handler(ctx)
+			})
+			middlewareHandler(ctx)
 		})
-	})
+	}
 }
 
 // adaptHandler adapts a HandlerFunc to http.HandlerFunc.
@@ -200,14 +234,17 @@ func (w *Way) Start(address string) error {
 	}
 	w.Server.Handler = loggingMiddleware(w.Logger, w.router)
 	w.Logger.Printf("Server started at %s", address)
-	asciiArt := `
-	__        ______   __
-	\ \      / /  \ \ / /
-	 \ \ /\ / / /\ \ V / 
-	  \ V  V / /__\ | |  
-	   \_/\_/_/----\|_|  
-	`
-	w.Log().Println(asciiArt)
+	w.Logger.Println(`
+	___________________________________
+	       __        ______   __
+	       \ \      / /  \ \ / /
+	        \ \ /\ / / /\ \ V / 
+	         \ V  V / /__\ | |  
+	          \_/\_/_/----\|_|  
+	------------------------------------
+		Server is running an port: %s
+	------------------------------------
+	`, address)
 	return w.Server.Serve(w.Listener)
 }
 
@@ -235,7 +272,7 @@ func (w *Way) Db() *DB {
 	return w.db
 }
 
-// GetEnv retrieves the environment variable value or a default value if not set
+// GetEnv retrieves the environment variable value or a default value if not set.
 func GetEnv(key, defaultValue string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
@@ -266,8 +303,8 @@ const (
 )
 
 // defaultLogger returns a new logger that writes to os.Stdout.
-func defaultLogger() *log.Logger {
-	return log.New(os.Stdout, GetEnv(envDefaultLogger, "WAY_INFO")+": ", log.LstdFlags)
+func defaultLogger(defaultLogger string) *log.Logger {
+	return log.New(os.Stdout, defaultLogger+": ", log.LstdFlags)
 }
 
 func loggingMiddleware(logger *log.Logger, next http.Handler) http.Handler {
@@ -279,57 +316,49 @@ func loggingMiddleware(logger *log.Logger, next http.Handler) http.Handler {
 }
 
 // useDefaultSession checks if the default session should be used.
-func useDefaultSession() bool {
-	return GetEnv(envStoreEncryptionKey, "") != "" ||
-		(GetEnv(envCookieEncryptionKey, "") != "" && GetEnv(envCookieAuthenticationKey, "") != "")
+func useDefaultSession(config *Config) bool {
+	return config.StoreEncryptionKey != "" ||
+		(config.CookieEncryptionKey != "" && config.CookieAuthenticationKey != "")
 }
 
 // setSessionDefaults sets the default values for a Session object.
-func setSessionDefaults(s *Session) {
-	s.defaultStore = getDefaultStoreName()
-	s.defaultCookie = getDefaultCookieName()
-	if key := GetEnv(envStoreEncryptionKey, ""); key != "" {
+func setSessionDefaults(s *Session, config *Config) {
+	s.defaultStore = config.StoreName
+	s.defaultCookie = config.CookieName
+	if key := config.StoreEncryptionKey; key != "" {
 		s.stores[s.defaultStore] = sessions.NewCookieStore([]byte(key))
 	}
-	if encKey := GetEnv(envCookieEncryptionKey, ""); encKey != "" {
-		authKey := GetEnv(envCookieAuthenticationKey, "")
+	if encKey := config.CookieEncryptionKey; encKey != "" {
+		authKey := config.CookieAuthenticationKey
 		s.cookies[s.defaultCookie] = securecookie.New([]byte(encKey), []byte(authKey))
 	}
 }
 
-// getDefaultCookieName returns the default cookie name.
-func getDefaultCookieName() string {
-	return GetEnv(envCookieName, "way")
-}
-
-// getDefaultStoreName returns the default store name.
-func getDefaultStoreName() string {
-	return GetEnv(envStoreName, "way")
-}
-
-// getEncryptionKey retrieves the encryption key used for cookie encryption.
-func getEncryptionKey() []byte {
-	key := GetEnv(envCookieEncryptionKey, "")
-	if key == "" {
-		log.Fatalf("%s is required", envCookieEncryptionKey)
+// defaultConfig returns a Config struct with default values.
+func defaultConfig() *Config {
+	return &Config{
+		DBDriver:                GetEnv(envDBDriver, "postgres"),
+		DBUsePGX:                GetEnv(envDBUsePGX, "true") == "true",
+		DBDSN:                   GetEnv(envDBDSN, ""),
+		DBUser:                  GetEnv(envDBUser, "user"),
+		DBPassword:              GetEnv(envDBPassword, "password"),
+		DBHost:                  GetEnv(envDBHost, "localhost"),
+		DBPort:                  GetEnv(envDBPort, "5432"),
+		DBName:                  GetEnv(envDBName, "dbname"),
+		StoreName:               GetEnv(envStoreName, "default"),
+		StoreEncryptionKey:      GetEnv(envStoreEncryptionKey, ""),
+		CookieName:              GetEnv(envCookieName, "way"),
+		CookieEncryptionKey:     GetEnv(envCookieEncryptionKey, ""),
+		CookieAuthenticationKey: GetEnv(envCookieAuthenticationKey, ""),
+		DefaultLogger:           GetEnv(envDefaultLogger, "WAY_INFO"),
 	}
-	return []byte(key)
 }
 
-// getAuthenticationKey retrieves the authentication key from the environment variable.
-func getAuthenticationKey() []byte {
-	key := GetEnv(envCookieAuthenticationKey, "")
-	if key == "" {
-		log.Fatalf("%s is required", envCookieAuthenticationKey)
+// generateRandomKey generates a random key of the given length.
+func generateRandomKey(length int) string {
+	key := make([]byte, length)
+	if _, err := rand.Read(key); err != nil {
+		log.Fatalf("Failed to generate random key: %v", err)
 	}
-	return []byte(key)
-}
-
-// getStoreEncryptionKey retrieves the encryption key used for storing data in the application's store.
-func getStoreEncryptionKey() []byte {
-	key := GetEnv(envStoreEncryptionKey, "")
-	if key == "" {
-		log.Fatalf("%s is required", envStoreEncryptionKey)
-	}
-	return []byte(key)
+	return base64.StdEncoding.EncodeToString(key)
 }

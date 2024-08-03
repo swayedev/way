@@ -13,35 +13,39 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/swayedev/way/crypto"
 )
 
-// Response is the standard go HTTP response writer.
-// Request is the standard go HTTP request.
-// db is the way database connection.
-// Session is the way session.
+// Context represents the context for a request.
 type Context struct {
 	Response http.ResponseWriter
 	Request  *http.Request
 	db       *DB
 	Session  *Session
 	Logger   *log.Logger
+	Crypto   *Crypto
 }
 
+// NewContext creates a new Context instance.
 func NewContext(w http.ResponseWriter, r *http.Request, d *DB, s *Session, l *log.Logger) *Context {
 	return &Context{Response: w, Request: r, db: d, Session: s, Logger: l}
 }
+
+// Log returns the logger.
 func (c *Context) Log() *log.Logger {
 	return c.Logger
 }
+
+// SetSession sets the session.
 func (c *Context) SetSession(s *Session) {
 	c.Session = s
 }
 
+// GetDB returns the database instance.
 func (c *Context) GetDB() *DB {
 	return c.db
 }
 
+// GetSession returns a session store by name.
 func (c *Context) GetSession(name string) sessions.Store {
 	store := c.Session.stores[name]
 	if store == nil {
@@ -52,12 +56,16 @@ func (c *Context) GetSession(name string) sessions.Store {
 	return store
 }
 
+// Parms returns the request parameters.
 func (c *Context) Parms() map[string]string {
 	params := mux.Vars(c.Request)
 	c.Logger.Printf("Request parameters: %v", params)
 	return params
 }
 
+// SQL Execution Functions
+
+// SqlExec executes an SQL query and returns the result.
 func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
 	result, err := c.db.SQLExec(ctx, query, args...)
@@ -67,6 +75,7 @@ func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}
 	return result, err
 }
 
+// SqlExecNoResult executes an SQL query without returning a result.
 func (c *Context) SqlExecNoResult(ctx context.Context, query string, args ...interface{}) error {
 	c.Logger.Printf("Executing SQL query with no result: %s with args: %v", query, args)
 	err := c.db.SQLExecNoResult(ctx, query, args...)
@@ -76,6 +85,7 @@ func (c *Context) SqlExecNoResult(ctx context.Context, query string, args ...int
 	return err
 }
 
+// SqlQuery executes an SQL query and returns rows.
 func (c *Context) SqlQuery(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
 	rows, err := c.db.SQLQuery(ctx, query, args...)
@@ -85,12 +95,16 @@ func (c *Context) SqlQuery(ctx context.Context, query string, args ...interface{
 	return rows, err
 }
 
+// SqlQueryRow executes an SQL query that is expected to return at most one row.
 func (c *Context) SqlQueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
 	c.Logger.Printf("Executing SQL query row: %s with args: %v", query, args)
 	row := c.db.SQLQueryRow(ctx, query, args...)
 	return row
 }
 
+// PGX Execution Functions
+
+// PgxExec executes a PGX query and returns the command tag.
 func (c *Context) PgxExec(ctx context.Context, query string, args ...interface{}) (pgconn.CommandTag, error) {
 	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
 	commandTag, err := c.db.PGXExec(ctx, query, args...)
@@ -100,6 +114,7 @@ func (c *Context) PgxExec(ctx context.Context, query string, args ...interface{}
 	return commandTag, err
 }
 
+// PgxExecNoResult executes a PGX query without returning a result.
 func (c *Context) PgxExecNoResult(ctx context.Context, query string, args ...interface{}) error {
 	c.Logger.Printf("Executing PGX query with no result: %s with args: %v", query, args)
 	err := c.db.PGXExecNoResult(ctx, query, args...)
@@ -109,6 +124,7 @@ func (c *Context) PgxExecNoResult(ctx context.Context, query string, args ...int
 	return err
 }
 
+// PgxQuery executes a PGX query and returns rows.
 func (c *Context) PgxQuery(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
 	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
 	rows, err := c.db.PGXQuery(ctx, query, args...)
@@ -118,17 +134,22 @@ func (c *Context) PgxQuery(ctx context.Context, query string, args ...interface{
 	return rows, err
 }
 
+// PgxQueryRow executes a PGX query that is expected to return at most one row.
 func (c *Context) PgxQueryRow(ctx context.Context, query string, args ...interface{}) pgx.Row {
 	c.Logger.Printf("Executing PGX query row: %s with args: %v", query, args)
 	row := c.db.PGXQueryRow(ctx, query, args...)
 	return row
 }
 
+// Response Functions
+
+// Redirect redirects the request to a provided URL with status code.
 func (c *Context) Redirect(code int, url string) {
 	c.Logger.Printf("Redirecting to URL: %s with status code: %d", url, code)
 	http.Redirect(c.Response, c.Request, url, code)
 }
 
+// JSON sends a JSON response with status code.
 func (c *Context) JSON(code int, i interface{}) {
 	c.Response.Header().Set("Content-Type", "application/json")
 	c.Response.WriteHeader(code)
@@ -148,6 +169,7 @@ func (c *Context) HTML(code int, htmlContent string) {
 	}
 }
 
+// String sends a string response with status code.
 func (c *Context) String(code int, i interface{}) {
 	c.Response.Header().Set("Content-Type", "text/plain")
 	c.Response.WriteHeader(code)
@@ -167,6 +189,7 @@ func (c *Context) String(code int, i interface{}) {
 	}
 }
 
+// XML sends an XML response with status code.
 func (c *Context) XML(code int, i interface{}) {
 	c.Response.Header().Set("Content-Type", "application/xml")
 	c.Response.WriteHeader(code)
@@ -176,6 +199,7 @@ func (c *Context) XML(code int, i interface{}) {
 	}
 }
 
+// Data sends a response with raw data and status code.
 func (c *Context) Data(code int, data []byte) {
 	c.Response.WriteHeader(code)
 	if _, err := c.Response.Write(data); err != nil {
@@ -183,11 +207,13 @@ func (c *Context) Data(code int, data []byte) {
 	}
 }
 
+// Status sets the status code for the response.
 func (c *Context) Status(code int) {
 	c.Response.WriteHeader(code)
 	c.Logger.Printf("Status set to %d", code)
 }
 
+// Image sends an image response with status code and content type.
 func (c *Context) Image(code int, contentType string, imageData []byte) {
 	c.Response.Header().Set("Content-Type", contentType)
 	c.Response.WriteHeader(code)
@@ -196,11 +222,13 @@ func (c *Context) Image(code int, contentType string, imageData []byte) {
 	}
 }
 
-func (c *Context) SetHeader(key string, value string) {
+// SetHeader sets a header key-value pair.
+func (c *Context) SetHeader(key, value string) {
 	c.Response.Header().Set(key, value)
 	c.Logger.Printf("Header set: %s = %s", key, value)
 }
 
+// ProxyMedia proxies media from a given URL.
 func (c *Context) ProxyMedia(mediaURL string) {
 	resp, err := http.Get(mediaURL)
 	if err != nil {
@@ -224,72 +252,25 @@ func (c *Context) ProxyMedia(mediaURL string) {
 	}
 }
 
+// SetCookie sets a cookie.
 func (c *Context) SetCookie(cookie *http.Cookie) {
 	http.SetCookie(c.Response, cookie)
 	c.Logger.Printf("Cookie set: %s", cookie.String())
 }
 
+// GetCookie retrieves a cookie by name.
 func (c *Context) GetCookie(name string) (*http.Cookie, error) {
-	return c.Request.Cookie(name)
+	cookie, err := c.Request.Cookie(name)
+	if err != nil {
+		c.Logger.Printf("Error retrieving cookie: %v", err)
+	}
+	return cookie, err
 }
 
+// DeleteCookie deletes a cookie by name.
 func (c *Context) DeleteCookie(name string) {
 	c.SetCookie(&http.Cookie{
 		Name:   name,
 		MaxAge: -1,
 	})
-}
-
-// func (c *Context) GetSession(name string) (*http.Cookie, error) {
-// 	return c.Request.Cookie(name)
-// }
-
-// func (c *Context) SetSession(cookie *http.Cookie) {
-// 	http.SetCookie(c.Response, cookie)
-// }
-
-// func (c *Context) DeleteSession(name string) {
-// 	c.SetSession(&http.Cookie{
-// 		Name:   name,
-// 		MaxAge: -1,
-// 	})
-// }
-
-// func (c *Context) GetSessionValue(name string) (string, error) {
-// 	cookie, err := c.GetSession(name)
-// 	if err != nil {
-// 		return "", err
-// 	}
-// 	return cookie.Value, nil
-// }
-
-// func (c *Context) SetSessionValue(name string, value string) {
-// 	c.SetSession(&http.Cookie{
-// 		Name:  name,
-// 		Value: value,
-// 	})
-// }
-
-// func (c *Context) DeleteSessionValue(name string) {
-// 	c.DeleteSession(name)
-// }
-
-func (c *Context) HashStringToString(value string) string {
-	return crypto.HashStringToString(value)
-}
-
-func (c *Context) HashString(value string) [32]byte {
-	return crypto.HashString(value)
-}
-
-func (c *Context) HashByte(value []byte) [32]byte {
-	return crypto.HashByte(value)
-}
-
-func (c *Context) Encrypt(data []byte, passphrase string) (string, error) {
-	return crypto.Encrypt(data, passphrase)
-}
-
-func (c *Context) Decrypt(encrypted string, passphrase string) ([]byte, error) {
-	return crypto.Decrypt(encrypted, passphrase)
 }

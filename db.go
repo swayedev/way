@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -21,9 +22,10 @@ type DB struct {
 	MaxOpenConns    int           // For connection pooling configuration
 	MaxIdleConns    int           // For connection pooling configuration
 	ConnMaxLifetime time.Duration // For connection pooling configuration
+	logger          *log.Logger
 }
 
-// New initializes a new DB instance
+// NewDB initializes a new DB instance with default connection pool settings.
 func NewDB() DB {
 	return DB{
 		MaxOpenConns:    5,
@@ -31,6 +33,8 @@ func NewDB() DB {
 		ConnMaxLifetime: 5 * time.Minute,
 	}
 }
+
+// NewDBPool initializes a new DB instance with specified connection pool settings.
 func NewDBPool(maxOpenConns, maxIdleConns int, connMaxLifetime time.Duration) DB {
 	return DB{
 		MaxOpenConns:    maxOpenConns,
@@ -39,7 +43,7 @@ func NewDBPool(maxOpenConns, maxIdleConns int, connMaxLifetime time.Duration) DB
 	}
 }
 
-// SetDB sets the database connection based on the type
+// SetDB sets the database connection based on the type.
 func (d *DB) SetDB(db interface{}, driver string) {
 	switch v := db.(type) {
 	case *sql.DB:
@@ -49,31 +53,31 @@ func (d *DB) SetDB(db interface{}, driver string) {
 	}
 }
 
-// PGXNew initializes a pgx connection
+// PGXNew initializes a pgx connection.
 func (d *DB) PGXNew(db *pgx.Conn) {
 	d.pgx = db
 	d.UsePgx = true
 	d.Driver = "pgx"
 }
 
-// SqlNew initializes a sql.DB connection
+// SQLNew initializes a sql.DB connection.
 func (d *DB) SQLNew(db *sql.DB, driver string) {
 	d.sql = db
 	d.UsePgx = false
-	d.Driver = database.CheckDriver(driver)
+	d.Driver, _ = database.CheckDriver(driver)
 }
 
-// Sql returns the sql.DB connection
+// SQL returns the sql.DB connection.
 func (d *DB) SQL() *sql.DB {
 	return d.sql
 }
 
-// Pgx returns the pgx.Conn connection
+// PGX returns the pgx.Conn connection.
 func (d *DB) PGX() *pgx.Conn {
 	return d.pgx
 }
 
-// Open opens a database connection based on the driver type
+// Open opens a database connection based on the driver type.
 func (d *DB) Open(dsn string) error {
 	if d.UsePgx {
 		return d.PGXOpen(dsn)
@@ -81,25 +85,25 @@ func (d *DB) Open(dsn string) error {
 	return d.SQLOpen(d.Driver, dsn)
 }
 
-// PgxOpen opens a pgx connection
+// PGXOpen opens a pgx connection.
 func (d *DB) PGXOpen(dsn string) error {
 	d.UsePgx = true
 	d.Driver = "pgx"
-	db, err := database.PGXConnect(dsn)
+	db, _, err := database.PGXConnect(database.PGXConfig{DSN: dsn, UsePooling: false})
 	if err != nil {
-		return fmt.Errorf("failed to open pgx database connection: %w", err)
+		return database.NewDBError(database.OpConnect, fmt.Errorf("failed to open pgx database connection: %w", err))
 	}
 	d.pgx = db
 	return nil
 }
 
-// SqlOpen opens a sql.DB connection
+// SQLOpen opens a sql.DB connection.
 func (d *DB) SQLOpen(driver, dsn string) error {
 	d.UsePgx = false
-	d.Driver = database.CheckDriver(driver)
-	db, err := database.SQLConnect(d.Driver, dsn)
+	d.Driver, _ = database.CheckDriver(driver)
+	db, err := database.SQLConnect(database.SQLConfig{Driver: driver, DSN: dsn, UsePooling: false})
 	if err != nil {
-		return fmt.Errorf("failed to open sql database connection: %w", err)
+		return database.NewDBError(database.OpConnect, fmt.Errorf("failed to open sql database connection: %w", err))
 	}
 	db.SetMaxOpenConns(d.MaxOpenConns)
 	db.SetMaxIdleConns(d.MaxIdleConns)
@@ -108,7 +112,7 @@ func (d *DB) SQLOpen(driver, dsn string) error {
 	return nil
 }
 
-// Close closes the database connection
+// Close closes the database connection.
 func (d *DB) Close() error {
 	if d.UsePgx {
 		return d.PGXClose()
@@ -116,23 +120,23 @@ func (d *DB) Close() error {
 	return d.SQLClose()
 }
 
-// PgxClose closes the pgx connection
+// PGXClose closes the pgx connection.
 func (d *DB) PGXClose() error {
 	if d.pgx == nil {
-		return errors.New("pgx database connection is not initialized")
+		return database.NewDBError(database.OpClose, errors.New("pgx database connection is not initialized"))
 	}
 	return d.pgx.Close(context.Background())
 }
 
-// SqlClose closes the sql.DB connection
+// SQLClose closes the sql.DB connection.
 func (d *DB) SQLClose() error {
 	if d.sql == nil {
-		return errors.New("sql database connection is not initialized")
+		return database.NewDBError(database.OpClose, errors.New("sql database connection is not initialized"))
 	}
 	return d.sql.Close()
 }
 
-// Exec executes a query
+// Exec executes a query.
 func (d *DB) Exec(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
 	if d.UsePgx {
 		return d.PGXExec(ctx, query, args...)
@@ -140,23 +144,23 @@ func (d *DB) Exec(ctx context.Context, query string, args ...interface{}) (inter
 	return d.SQLExec(ctx, query, args...)
 }
 
-// PgxExec executes a pgx query
+// PGXExec executes a pgx query.
 func (d *DB) PGXExec(ctx context.Context, query string, args ...interface{}) (pgconn.CommandTag, error) {
 	if d.pgx == nil {
-		return pgconn.CommandTag{}, errors.New("pgx database connection is not initialized")
+		return pgconn.CommandTag{}, database.NewDBError(database.OpExec, errors.New("pgx database connection is not initialized"))
 	}
-	return database.PGXExec(d.pgx, ctx, query, args...)
+	return database.PGXExec(d.pgx, nil, ctx, query, args...)
 }
 
-// SqlExec executes a sql.DB query
+// SQLExec executes a sql.DB query.
 func (d *DB) SQLExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	if d.sql == nil {
-		return nil, errors.New("sql database connection is not initialized")
+		return nil, database.NewDBError(database.OpExec, errors.New("sql database connection is not initialized"))
 	}
 	return database.SQLExec(d.sql, ctx, query, args...)
 }
 
-// ExecNoResult executes a query without returning a result
+// ExecNoResult executes a query without returning a result.
 func (d *DB) ExecNoResult(ctx context.Context, query string, args ...interface{}) error {
 	if d.UsePgx {
 		return d.PGXExecNoResult(ctx, query, args...)
@@ -164,25 +168,25 @@ func (d *DB) ExecNoResult(ctx context.Context, query string, args ...interface{}
 	return d.SQLExecNoResult(ctx, query, args...)
 }
 
-// PgxExecNoResult executes a pgx query without returning a result
+// PGXExecNoResult executes a pgx query without returning a result.
 func (d *DB) PGXExecNoResult(ctx context.Context, query string, args ...interface{}) error {
 	if d.pgx == nil {
-		return errors.New("pgx database connection is not initialized")
+		return database.NewDBError(database.OpExec, errors.New("pgx database connection is not initialized"))
 	}
-	_, err := database.PGXExec(d.pgx, ctx, query, args...)
+	_, err := database.PGXExec(d.pgx, nil, ctx, query, args...)
 	return err
 }
 
-// SqlExecNoResult executes a sql.DB query without returning a result
+// SQLExecNoResult executes a sql.DB query without returning a result.
 func (d *DB) SQLExecNoResult(ctx context.Context, query string, args ...interface{}) error {
 	if d.sql == nil {
-		return errors.New("sql database connection is not initialized")
+		return database.NewDBError(database.OpExec, errors.New("sql database connection is not initialized"))
 	}
 	_, err := database.SQLExec(d.sql, ctx, query, args...)
 	return err
 }
 
-// Query executes a query and returns rows
+// Query executes a query and returns rows.
 func (d *DB) Query(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
 	if d.UsePgx {
 		return d.PGXQuery(ctx, query, args...)
@@ -190,23 +194,23 @@ func (d *DB) Query(ctx context.Context, query string, args ...interface{}) (inte
 	return d.SQLQuery(ctx, query, args...)
 }
 
-// PgxQuery executes a pgx query and returns rows
+// PGXQuery executes a pgx query and returns rows.
 func (d *DB) PGXQuery(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
 	if d.pgx == nil {
-		return nil, errors.New("pgx database connection is not initialized")
+		return nil, database.NewDBError(database.OpQuery, errors.New("pgx database connection is not initialized"))
 	}
-	return database.PGXQuery(d.pgx, ctx, query, args...)
+	return database.PGXQuery(d.pgx, nil, ctx, query, args...)
 }
 
-// SqlQuery executes a sql.DB query and returns rows
+// SQLQuery executes a sql.DB query and returns rows.
 func (d *DB) SQLQuery(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	if d.sql == nil {
-		return nil, errors.New("sql database connection is not initialized")
+		return nil, database.NewDBError(database.OpQuery, errors.New("sql database connection is not initialized"))
 	}
 	return database.SQLQuery(d.sql, ctx, query, args...)
 }
 
-// QueryRow executes a query that is expected to return at most one row
+// QueryRow executes a query that is expected to return at most one row.
 func (d *DB) QueryRow(ctx context.Context, query string, args ...interface{}) interface{} {
 	if d.UsePgx {
 		return d.PGXQueryRow(ctx, query, args...)
@@ -214,15 +218,15 @@ func (d *DB) QueryRow(ctx context.Context, query string, args ...interface{}) in
 	return d.SQLQueryRow(ctx, query, args...)
 }
 
-// PgxQueryRow executes a pgx query that is expected to return at most one row
+// PGXQueryRow executes a pgx query that is expected to return at most one row.
 func (d *DB) PGXQueryRow(ctx context.Context, query string, args ...interface{}) pgx.Row {
 	if d.pgx == nil {
 		return nil
 	}
-	return database.PGXQueryRow(d.pgx, ctx, query, args...)
+	return database.PGXQueryRow(d.pgx, nil, ctx, query, args...)
 }
 
-// SqlQueryRow executes a sql.DB query that is expected to return at most one row
+// SQLQueryRow executes a sql.DB query that is expected to return at most one row.
 func (d *DB) SQLQueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
 	if d.sql == nil {
 		return nil
@@ -230,7 +234,7 @@ func (d *DB) SQLQueryRow(ctx context.Context, query string, args ...interface{})
 	return database.SQLQueryRow(d.sql, ctx, query, args...)
 }
 
-// SetDriver sets the database driver
+// SetDriver sets the database driver.
 func (d *DB) SetDriver(driver string, usePgx bool) {
 	if usePgx {
 		d.UsePgx = true
@@ -238,10 +242,18 @@ func (d *DB) SetDriver(driver string, usePgx bool) {
 		return
 	}
 
-	d.Driver = database.CheckDriver(driver)
+	d.Driver, _ = database.CheckDriver(driver)
 }
 
-// SetDSN sets the Data Source Name (DSN)
-func (d *DB) SetDSN(driver, dsn, dbName, dbHost, dbPort, dbUser, dbPass string) string {
-	return database.CheckDSN(driver, dsn, dbName, dbHost, dbPort, dbUser, dbPass)
+// SetDSN sets the Data Source Name (DSN).
+func (d *DB) SetDSN(driver, dsn, dbName, dbHost, dbPort, dbUser, dbPass string) (string, error) {
+	return database.CheckDSN(database.DriverConfig{
+		Driver: driver,
+		DSN:    dsn,
+		DBName: dbName,
+		DBHost: dbHost,
+		DBPort: dbPort,
+		DBUser: dbUser,
+		DBPass: dbPass,
+	})
 }
