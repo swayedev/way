@@ -7,9 +7,10 @@ All notable changes to this project will be documented in this file.
 ##### Added
 - **Centralized Configuration**
   - Introduced `DriverConfig` struct for managing configuration of different database drivers.
-  - Introduced `PGXConfig` struct for centralized configuration and optional pooling.
-  - Introduced `SQLConfig` struct for centralized configuration and optional pooling.
-  
+  - Introduced the `DBConfig` interface to standardize configuration handling across different database drivers.
+  - Introduced `PGXConfig` struct for centralized configuration and optional pooling, implementing the `DBConfig` interface for PostgreSQL databases.
+  - Introduced `SQLConfig` struct for centralized configuration and optional pooling, implementing the `DBConfig` interface for SQL databases.
+
 - **Custom Error Handling**
   - Implemented `DBError` type for consistent and detailed error handling across all modules.
   - Added operation constants for better error context (e.g., `OpConfigParse`, `OpDriverCheck`, `OpDSNSet`, `OpPing`, `OpConnect`, `OpExec`, `OpQuery`, `OpClose`, `OpPoolConnect`, `OpTxBegin`, `OpTxCommit`, `OpTxRollback`).
