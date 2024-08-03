@@ -3,6 +3,7 @@ package database
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	_ "github.com/denisenkom/go-mssqldb" // Microsoft SQL Server
 	_ "github.com/go-sql-driver/mysql"   // MySQL
@@ -20,6 +21,16 @@ type DriverConfig struct {
 	DBPort string
 	DBUser string
 	DBPass string
+}
+
+type DBConfig interface {
+	// SetDSN sets the DSN for the database connection.
+	GetDriver() string
+	GetDSN() string
+	GetUsePooling() bool
+	GetMaxOpenConns() int
+	GetMaxIdleConns() int
+	GetConnMaxLifetime() time.Duration
 }
 
 // DBError represents a custom error type for database operations.
@@ -50,7 +61,7 @@ const (
 	OpQuery   = "query"
 	OpClose   = "close"
 	// Pooling operations
-	OpPoolConnet = "connect with pool"
+	OpPoolConnect = "connect with pool"
 	// Transaction operations
 	OpTxBegin    = "begin transaction"
 	OpTxCommit   = "commit transaction"

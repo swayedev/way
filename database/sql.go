@@ -24,9 +24,33 @@ type SQLConfig struct {
 	ConnMaxLifetime time.Duration
 }
 
+func (c SQLConfig) GetDriver() string {
+	return c.Driver
+}
+
+func (c SQLConfig) GetDSN() string {
+	return c.DSN
+}
+
+func (c SQLConfig) GetUsePooling() bool {
+	return c.UsePooling
+}
+
+func (c SQLConfig) GetMaxOpenConns() int {
+	return c.MaxOpenConns
+}
+
+func (c SQLConfig) GetMaxIdleConns() int {
+	return c.MaxIdleConns
+}
+
+func (c SQLConfig) GetConnMaxLifetime() time.Duration {
+	return c.ConnMaxLifetime
+}
+
 // SQLConnect establishes a connection to the SQL database.
-func SQLConnect(config SQLConfig) (*sql.DB, error) {
-	db, err := sql.Open(config.Driver, config.DSN)
+func SQLConnect(config DBConfig) (*sql.DB, error) {
+	db, err := sql.Open(config.GetDriver(), config.GetDSN())
 	if err != nil {
 		return nil, NewDBError(OpConnect, err)
 	}
@@ -35,12 +59,12 @@ func SQLConnect(config SQLConfig) (*sql.DB, error) {
 		return nil, NewDBError(OpPing, err)
 	}
 
-	if config.UsePooling {
-		db.SetMaxOpenConns(config.MaxOpenConns)
-		db.SetMaxIdleConns(config.MaxIdleConns)
-		db.SetConnMaxLifetime(config.ConnMaxLifetime)
+	if config.GetUsePooling() {
+		db.SetMaxOpenConns(config.GetMaxOpenConns())
+		db.SetMaxIdleConns(config.GetMaxIdleConns())
+		db.SetConnMaxLifetime(config.GetConnMaxLifetime())
 		log.Printf("Database connection pool configured with maxOpenConns=%d, maxIdleConns=%d, connMaxLifetime=%s",
-			config.MaxOpenConns, config.MaxIdleConns, config.ConnMaxLifetime)
+			config.GetMaxOpenConns(), config.GetMaxIdleConns(), config.GetConnMaxLifetime())
 	} else {
 		log.Println("Database connected without pooling")
 	}

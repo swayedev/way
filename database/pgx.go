@@ -20,17 +20,41 @@ type PGXConfig struct {
 	ConnMaxLifetime time.Duration
 }
 
+func (c PGXConfig) GetDriver() string {
+	return "pgx"
+}
+
+func (c PGXConfig) GetDSN() string {
+	return c.DSN
+}
+
+func (c PGXConfig) GetUsePooling() bool {
+	return c.UsePooling
+}
+
+func (c PGXConfig) GetMaxOpenConns() int {
+	return int(c.MaxConns)
+}
+
+func (c PGXConfig) GetMaxIdleConns() int {
+	return int(c.MinConns)
+}
+
+func (c PGXConfig) GetConnMaxLifetime() time.Duration {
+	return c.ConnMaxLifetime
+}
+
 // PGXConnect establishes a connection to the PostgreSQL database using pgx.
-func PGXConnect(config PGXConfig) (*pgx.Conn, *pgxpool.Pool, error) {
-	if config.UsePooling {
+func PGXConnect(config DBConfig) (*pgx.Conn, *pgxpool.Pool, error) {
+	if config.GetUsePooling() {
 		return connectWithPool(config)
 	}
 	return connectWithoutPool(config)
 }
 
 // connectWithoutPool establishes a direct connection to the PostgreSQL database.
-func connectWithoutPool(config PGXConfig) (*pgx.Conn, *pgxpool.Pool, error) {
-	conn, err := pgx.Connect(context.Background(), config.DSN)
+func connectWithoutPool(config DBConfig) (*pgx.Conn, *pgxpool.Pool, error) {
+	conn, err := pgx.Connect(context.Background(), config.GetDSN())
 	if err != nil {
 		return nil, nil, NewDBError(OpConnect, err)
 	}
@@ -39,19 +63,19 @@ func connectWithoutPool(config PGXConfig) (*pgx.Conn, *pgxpool.Pool, error) {
 }
 
 // connectWithPool establishes a connection pool to the PostgreSQL database.
-func connectWithPool(config PGXConfig) (*pgx.Conn, *pgxpool.Pool, error) {
-	poolConfig, err := pgxpool.ParseConfig(config.DSN)
+func connectWithPool(config DBConfig) (*pgx.Conn, *pgxpool.Pool, error) {
+	poolConfig, err := pgxpool.ParseConfig(config.GetDSN())
 	if err != nil {
 		return nil, nil, NewDBError(OpConfigParse, err)
 	}
 
-	poolConfig.MaxConns = config.MaxConns
-	poolConfig.MinConns = config.MinConns
-	poolConfig.MaxConnLifetime = config.ConnMaxLifetime
+	poolConfig.MaxConns = int32(config.GetMaxIdleConns())
+	poolConfig.MinConns = int32(config.GetMaxIdleConns())
+	poolConfig.MaxConnLifetime = config.GetConnMaxLifetime()
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
-		return nil, nil, NewDBError(OpPoolConnet, err)
+		return nil, nil, NewDBError(OpPoolConnect, err)
 	}
 	log.Println("Successfully connected to the database with pooling")
 	return nil, pool, nil
