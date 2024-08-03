@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"fmt"
 
 	_ "github.com/denisenkom/go-mssqldb" // Microsoft SQL Server
@@ -10,55 +11,112 @@ import (
 	_ "github.com/mattn/go-sqlite3"      // SQLite
 )
 
-// CheckDriver checks and returns the appropriate driver
-func CheckDriver(driver string) string {
+// DriverConfig holds the configuration for different database drivers.
+type DriverConfig struct {
+	Driver string
+	DSN    string
+	DBName string
+	DBHost string
+	DBPort string
+	DBUser string
+	DBPass string
+}
+
+// DBError represents a custom error type for database operations.
+type DBError struct {
+	Op  string // Operation
+	Err error  // Original error
+}
+
+// Error implements the error interface for DBError.
+func (e *DBError) Error() string {
+	return fmt.Sprintf("db error during %s: %v", e.Op, e.Err)
+}
+
+// Unwrap returns the underlying error for DBError.
+func (e *DBError) Unwrap() error {
+	return e.Err
+}
+
+// DBError operation constants
+const (
+	OpConfigParse = "parse config"
+	OpDriverCheck = "check driver"
+	OpDSNSet      = "set DSN"
+	// Database operations
+	OpPing    = "ping"
+	OpConnect = "connect"
+	OpExec    = "execute"
+	OpQuery   = "query"
+	OpClose   = "close"
+	// Pooling operations
+	OpPoolConnet = "connect with pool"
+	// Transaction operations
+	OpTxBegin    = "begin transaction"
+	OpTxCommit   = "commit transaction"
+	OpTxRollback = "rollback transaction"
+)
+
+// DBError error messages
+const (
+	ErrUnsupportedDriver      = "unsupported database driver"
+	ErrDatabaseNotInitialized = "database connection is not initialized"
+)
+
+// NewDBError creates a new DBError.
+func NewDBError(op string, err error) error {
+	return &DBError{Op: op, Err: err}
+}
+
+// CheckDriver checks and returns the appropriate driver, or an error if unsupported
+func CheckDriver(driver string) (string, error) {
 	switch driver {
 	case "postgres", "cockroachdb", "pgx":
-		return "pgx"
+		return "pgx", nil
 	case "mysql", "sql":
-		return "mysql"
+		return "mysql", nil
 	case "sqlite", "sqlite3":
-		return "sqlite3"
+		return "sqlite3", nil
 	case "clickhouse", "ch":
-		return "clickhouse"
+		return "clickhouse", nil
 	case "firebirdsql", "firebird":
-		return "firebirdsql"
+		return "firebirdsql", nil
 	case "godror", "oracle":
-		return "godror"
+		return "godror", nil
 	case "sqlserver", "mssql":
-		return "sqlserver"
+		return "sqlserver", nil
 	default:
-		return ""
+		return "", NewDBError(OpDriverCheck, errors.New(ErrUnsupportedDriver))
 	}
 }
 
-// CheckDSN constructs the DSN based on the driver and provided parameters
-func CheckDSN(driver, dsn, dbName, dbHost, dbPort, dbUser, dbPass string) string {
-	if dsn != "" {
-		return dsn
+// CheckDSN constructs the DSN based on the driver and provided parameters, or returns an error.
+func CheckDSN(config DriverConfig) (string, error) {
+	if config.DSN != "" {
+		return config.DSN, nil
 	}
-	return setDBDSN(driver, dbName, dbHost, dbPort, dbUser, dbPass)
+	return setDBDSN(config)
 }
 
-// setDBDSN constructs the DSN based on the driver and provided parameters
-func setDBDSN(driver, dbName, dbHost, dbPort, dbUser, dbPass string) string {
-	switch driver {
+// setDBDSN constructs the DSN based on the driver and provided parameters, or returns an error.
+func setDBDSN(config DriverConfig) (string, error) {
+	switch config.Driver {
 	case "postgres", "pgx":
-		return setPostgresDSN(dbUser, dbPass, dbHost, dbPort, dbName)
+		return setPostgresDSN(config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName), nil
 	case "mysql":
-		return setMysqlDSN(dbUser, dbPass, dbHost, dbPort, dbName)
+		return setMysqlDSN(config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName), nil
 	case "sqlite3":
-		return setSqliteDSN(dbName, dbHost)
+		return setSqliteDSN(config.DBName, config.DBHost), nil
 	case "clickhouse":
-		return setClickhouseDSN(dbUser, dbPass, dbHost, dbPort, dbName)
+		return setClickhouseDSN(config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName), nil
 	case "firebirdsql":
-		return setFirebirdDSN(dbUser, dbPass, dbHost, dbPort, dbName)
+		return setFirebirdDSN(config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName), nil
 	case "godror":
-		return setOracleDSN(dbUser, dbPass, dbHost, dbPort, dbName)
+		return setOracleDSN(config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName), nil
 	case "sqlserver":
-		return setSQLServerDSN(dbUser, dbPass, dbHost, dbPort, dbName)
+		return setSQLServerDSN(config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName), nil
 	default:
-		return ""
+		return "", NewDBError(OpDSNSet, errors.New(ErrUnsupportedDriver))
 	}
 }
 

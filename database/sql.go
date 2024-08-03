@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"time"
 
 	_ "github.com/denisenkom/go-mssqldb" // Microsoft SQL Server
 	_ "github.com/go-sql-driver/mysql"   // MySQL
@@ -13,33 +14,49 @@ import (
 	_ "github.com/mattn/go-sqlite3"      // SQLite
 )
 
-// SQLConnect opens a connection to the specified database and checks if it is alive.
-func SQLConnect(driver, dsn string) (*sql.DB, error) {
-	db, err := sql.Open(driver, dsn)
+// SQLConfig holds the configuration for SQL connection and pooling.
+type SQLConfig struct {
+	Driver          string
+	DSN             string
+	UsePooling      bool
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+}
+
+// SQLConnect establishes a connection to the SQL database.
+func SQLConnect(config SQLConfig) (*sql.DB, error) {
+	db, err := sql.Open(config.Driver, config.DSN)
 	if err != nil {
-		log.Printf("Failed to open database connection: %v", err)
-		return nil, err
+		return nil, NewDBError(OpConnect, err)
 	}
 
 	if err = db.Ping(); err != nil {
-		log.Printf("Failed to ping database: %v", err)
-		return nil, err
+		return nil, NewDBError(OpPing, err)
 	}
 
-	log.Printf("Successfully connected to the database with driver %s", driver)
+	if config.UsePooling {
+		db.SetMaxOpenConns(config.MaxOpenConns)
+		db.SetMaxIdleConns(config.MaxIdleConns)
+		db.SetConnMaxLifetime(config.ConnMaxLifetime)
+		log.Printf("Database connection pool configured with maxOpenConns=%d, maxIdleConns=%d, connMaxLifetime=%s",
+			config.MaxOpenConns, config.MaxIdleConns, config.ConnMaxLifetime)
+	} else {
+		log.Println("Database connected without pooling")
+	}
+
 	return db, nil
 }
 
 // SQLExec executes a query without returning any rows.
 func SQLExec(db *sql.DB, ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	if db == nil {
-		return nil, errors.New("database connection is not initialized")
+		return nil, NewDBError(OpExec, errors.New(ErrDatabaseNotInitialized))
 	}
 	log.Printf("Executing query: %s with args: %v", query, args)
 	result, err := db.ExecContext(ctx, query, args...)
 	if err != nil {
-		log.Printf("Error executing query: %v", err)
-		return nil, err
+		return nil, NewDBError(OpExec, err)
 	}
 	log.Printf("Query executed successfully: %s", query)
 	return result, nil
@@ -47,9 +64,6 @@ func SQLExec(db *sql.DB, ctx context.Context, query string, args ...interface{})
 
 // SQLExecNoResult executes a query without returning any rows and without returning the result.
 func SQLExecNoResult(db *sql.DB, ctx context.Context, query string, args ...interface{}) error {
-	if db == nil {
-		return errors.New("database connection is not initialized")
-	}
 	_, err := SQLExec(db, ctx, query, args...)
 	return err
 }
@@ -57,13 +71,12 @@ func SQLExecNoResult(db *sql.DB, ctx context.Context, query string, args ...inte
 // SQLQuery executes a query that returns rows.
 func SQLQuery(db *sql.DB, ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	if db == nil {
-		return nil, errors.New("database connection is not initialized")
+		return nil, NewDBError(OpQuery, errors.New(ErrDatabaseNotInitialized))
 	}
 	log.Printf("Executing query: %s with args: %v", query, args)
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
-		log.Printf("Error executing query: %v", err)
-		return nil, err
+		return nil, NewDBError(OpQuery, err)
 	}
 	log.Printf("Query executed successfully: %s", query)
 	return rows, nil
@@ -76,4 +89,32 @@ func SQLQueryRow(db *sql.DB, ctx context.Context, query string, args ...interfac
 	}
 	log.Printf("Executing query row: %s with args: %v", query, args)
 	return db.QueryRowContext(ctx, query, args...)
+}
+
+// SQLBeginTx begins a new transaction.
+func SQLBeginTx(db *sql.DB, ctx context.Context) (*sql.Tx, error) {
+	if db == nil {
+		return nil, NewDBError(OpTxBegin, errors.New(ErrDatabaseNotInitialized))
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, NewDBError(OpTxBegin, err)
+	}
+	return tx, nil
+}
+
+// SQLCommitTx commits the given transaction.
+func SQLCommitTx(tx *sql.Tx) error {
+	if err := tx.Commit(); err != nil {
+		return NewDBError(OpTxCommit, err)
+	}
+	return nil
+}
+
+// SQLRollbackTx rolls back the given transaction.
+func SQLRollbackTx(tx *sql.Tx) error {
+	if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+		return NewDBError(OpTxRollback, err)
+	}
+	return nil
 }
