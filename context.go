@@ -1,8 +1,6 @@
 package way
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -10,13 +8,12 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
-
 	"github.com/gorilla/sessions"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/swayedev/way/crypto"
 )
 
 // Context represents the context for a request.
@@ -26,7 +23,7 @@ type Context struct {
 	db       *DB
 	Session  *Session
 	Logger   *log.Logger
-	Crypto   *Crypto
+	Crypto   *crypto.Crypto
 }
 
 // NewContext creates a new Context instance.
@@ -60,13 +57,19 @@ func (c *Context) GetSession(name string) sessions.Store {
 	return store
 }
 
-// Request Functions
-
 // Parms returns the request parameters.
 func (c *Context) Parms() map[string]string {
 	params := mux.Vars(c.Request)
 	c.Logger.Printf("Request parameters: %v", params)
 	return params
+}
+
+// MultipartForm returns the parsed multipart form.
+func (c *Context) MultipartForm() (*multipart.Form, error) {
+	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+		return nil, err
+	}
+	return c.Request.MultipartForm, nil
 }
 
 // Bind binds the request body into provided type `i`.
@@ -87,94 +90,90 @@ func (c *Context) Bind(i interface{}) error {
 		decoder := schema.NewDecoder()
 		return decoder.Decode(i, c.Request.PostForm)
 	default:
-		return errors.New("unsupported Content-Type")
+		return errors.New("Unsupported Content-Type")
 	}
 }
 
-// MultipartForm returns the parsed multipart form.
-func (c *Context) MultipartForm() (*multipart.Form, error) {
-	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+// QueryParam returns the query param for the provided name.
+func (c *Context) QueryParam(name string) string {
+	return c.Request.URL.Query().Get(name)
+}
+
+// QueryParams returns the query parameters as `url.Values`.
+func (c *Context) QueryParams() url.Values {
+	return c.Request.URL.Query()
+}
+
+// QueryString returns the URL query string.
+func (c *Context) QueryString() string {
+	return c.Request.URL.RawQuery
+}
+
+// FormValue returns the form field value for the provided name.
+func (c *Context) FormValue(name string) string {
+	return c.Request.FormValue(name)
+}
+
+// FormParams returns the form parameters as `url.Values`.
+func (c *Context) FormParams() (url.Values, error) {
+	if err := c.Request.ParseForm(); err != nil {
 		return nil, err
 	}
-	return c.Request.MultipartForm, nil
+	return c.Request.PostForm, nil
 }
 
-// SQL Execution Functions
+// FormFile returns the multipart form file for the provided name.
+func (c *Context) FormFile(name string) (*multipart.FileHeader, error) {
+	_, fileHeader, err := c.Request.FormFile(name)
+	return fileHeader, err
+}
 
-// SqlExec executes an SQL query and returns the result.
-func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
-	result, err := c.db.SQLExec(ctx, query, args...)
-	if err != nil {
-		c.Logger.Printf("Error executing SQL query: %v", err)
+// Cookies returns the HTTP cookies sent with the request.
+func (c *Context) Cookies() []*http.Cookie {
+	return c.Request.Cookies()
+}
+
+// Request Handling Functions
+
+// IsTLS returns true if HTTP connection is TLS otherwise false.
+func (c *Context) IsTLS() bool {
+	return c.Request.TLS != nil
+}
+
+// IsWebSocket returns true if HTTP connection is WebSocket otherwise false.
+func (c *Context) IsWebSocket() bool {
+	return c.Request.Header.Get("Upgrade") == "websocket"
+}
+
+// Scheme returns the HTTP protocol scheme, `http` or `https`.
+func (c *Context) Scheme() string {
+	if c.Request.TLS != nil {
+		return "https"
 	}
-	return result, err
+	return "http"
 }
 
-// SqlExecNoResult executes an SQL query without returning a result.
-func (c *Context) SqlExecNoResult(ctx context.Context, query string, args ...interface{}) error {
-	c.Logger.Printf("Executing SQL query with no result: %s with args: %v", query, args)
-	err := c.db.SQLExecNoResult(ctx, query, args...)
-	if err != nil {
-		c.Logger.Printf("Error executing SQL query with no result: %v", err)
+// RealIP returns the client's network address based on `X-Forwarded-For` or `X-Real-IP` request header.
+func (c *Context) RealIP() string {
+	xff := c.Request.Header.Get("X-Forwarded-For")
+	if xff != "" {
+		return xff
 	}
-	return err
-}
-
-// SqlQuery executes an SQL query and returns rows.
-func (c *Context) SqlQuery(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
-	rows, err := c.db.SQLQuery(ctx, query, args...)
-	if err != nil {
-		c.Logger.Printf("Error executing SQL query: %v", err)
+	xri := c.Request.Header.Get("X-Real-IP")
+	if xri != "" {
+		return xri
 	}
-	return rows, err
+	return c.Request.RemoteAddr
 }
 
-// SqlQueryRow executes an SQL query that is expected to return at most one row.
-func (c *Context) SqlQueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	c.Logger.Printf("Executing SQL query row: %s with args: %v", query, args)
-	row := c.db.SQLQueryRow(ctx, query, args...)
-	return row
+// Path returns the registered path for the handler.
+func (c *Context) Path() string {
+	return c.Request.URL.Path
 }
 
-// PGX Execution Functions
-
-// PgxExec executes a PGX query and returns the command tag.
-func (c *Context) PgxExec(ctx context.Context, query string, args ...interface{}) (pgconn.CommandTag, error) {
-	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
-	commandTag, err := c.db.PGXExec(ctx, query, args...)
-	if err != nil {
-		c.Logger.Printf("Error executing PGX query: %v", err)
-	}
-	return commandTag, err
-}
-
-// PgxExecNoResult executes a PGX query without returning a result.
-func (c *Context) PgxExecNoResult(ctx context.Context, query string, args ...interface{}) error {
-	c.Logger.Printf("Executing PGX query with no result: %s with args: %v", query, args)
-	err := c.db.PGXExecNoResult(ctx, query, args...)
-	if err != nil {
-		c.Logger.Printf("Error executing PGX query with no result: %v", err)
-	}
-	return err
-}
-
-// PgxQuery executes a PGX query and returns rows.
-func (c *Context) PgxQuery(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
-	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
-	rows, err := c.db.PGXQuery(ctx, query, args...)
-	if err != nil {
-		c.Logger.Printf("Error executing PGX query: %v", err)
-	}
-	return rows, err
-}
-
-// PgxQueryRow executes a PGX query that is expected to return at most one row.
-func (c *Context) PgxQueryRow(ctx context.Context, query string, args ...interface{}) pgx.Row {
-	c.Logger.Printf("Executing PGX query row: %s with args: %v", query, args)
-	row := c.db.PGXQueryRow(ctx, query, args...)
-	return row
+// SetPath sets the registered path for the handler.
+func (c *Context) SetPath(p string) {
+	c.Request.URL.Path = p
 }
 
 // Response Functions
@@ -309,4 +308,47 @@ func (c *Context) DeleteCookie(name string) {
 		Name:   name,
 		MaxAge: -1,
 	})
+}
+
+// Cryptographic Functions (Crypto) - Not Implemented
+func (c *Context) SetCrypto(cr *crypto.Crypto) {
+	c.Crypto = cr
+}
+
+// Deprecated: Use the `crypto` package interface instead.
+// HashStringToString hashes a string to another string.
+func (c *Context) HashStringToString(value string) string {
+	return crypto.HashStringToString(value)
+}
+
+// Deprecated: Use the `crypto` package interface instead.
+// // HashString hashes a string to a byte array.
+func (c *Context) HashString(value string) [32]byte {
+	return crypto.HashString(value)
+}
+
+// Deprecated: Use the `crypto` package interface instead.
+// // HashByte hashes a byte array to another byte array.
+func (c *Context) HashByte(value []byte) [32]byte {
+	return crypto.HashByte(value)
+}
+
+// Deprecated: Use the `crypto` package interface instead.
+// // Encrypt encrypts data using a passphrase.
+func (c *Context) Encrypt(data []byte, passphrase string) (string, error) {
+	encrypted, err := crypto.Encrypt(data, passphrase)
+	if err != nil {
+		c.Logger.Printf("Error encrypting data: %v", err)
+	}
+	return encrypted, err
+}
+
+// Deprecated: Use the `crypto` package interface instead.
+// // Decrypt decrypts data using a passphrase.
+func (c *Context) Decrypt(encrypted string, passphrase string) ([]byte, error) {
+	decrypted, err := crypto.Decrypt(encrypted, passphrase)
+	if err != nil {
+		c.Logger.Printf("Error decrypting data: %v", err)
+	}
+	return decrypted, err
 }
