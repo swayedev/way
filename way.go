@@ -34,6 +34,7 @@ type Config struct {
 	CookieEncryptionKey     string
 	CookieAuthenticationKey string
 	DefaultLogger           string
+	Crypto                  *Crypto
 }
 
 // Way is the main framework structure.
@@ -46,6 +47,7 @@ type Way struct {
 	Listener     net.Listener
 	Logger       *log.Logger
 	Config       *Config
+	Crypto       *Crypto
 }
 
 // HandlerFunc is a function type that represents a handler for a request.
@@ -99,6 +101,11 @@ func (w *Way) SetServer(server *http.Server) {
 // SetListener sets the network listener.
 func (w *Way) SetListener(listener net.Listener) {
 	w.Listener = listener
+}
+
+// SetCrypto sets the Crypto object.
+func (w *Way) SetCrypto(c *Crypto) {
+	w.Crypto = c
 }
 
 // Log returns the logger.
@@ -175,7 +182,7 @@ func (w *Way) Use(middleware ...MiddlewareFunc) {
 func adaptMiddleware(w *Way, m MiddlewareFunc) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
-			ctx := NewContext(wr, r, w.db, w.sessions, w.Logger)
+			ctx := NewContext(wr, r, w.db, w.sessions, w.Logger, w.Crypto)
 			middlewareHandler := m(func(c *Context) {
 				next.ServeHTTP(wr, r)
 			})
@@ -185,9 +192,9 @@ func adaptMiddleware(w *Way, m MiddlewareFunc) mux.MiddlewareFunc {
 }
 
 // adaptHandler adapts a HandlerFunc to http.HandlerFunc.
-func adaptHandler(db *DB, s *Session, l *log.Logger, handler HandlerFunc) http.HandlerFunc {
+func adaptHandler(wa *Way, handler HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(w, r, db, s, l)
+		ctx := NewContext(w, r, wa.db, wa.sessions, wa.Logger, wa.Crypto)
 		handler(ctx)
 	}
 }
@@ -195,13 +202,13 @@ func adaptHandler(db *DB, s *Session, l *log.Logger, handler HandlerFunc) http.H
 // handleFuncWithMethod registers a new route with a matcher for the URL path and the HTTP method.
 func (w *Way) handleFuncWithMethod(path string, handler HandlerFunc, method string) {
 	w.Logger.Printf("Registering route %s", path)
-	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, w.Logger, handler)).Methods(method)
+	w.router.HandleFunc(path, adaptHandler(w, handler)).Methods(method)
 }
 
 // HandleFunc registers a new route with a matcher for the URL path.
 func (w *Way) HandleFunc(path string, handler HandlerFunc) {
 	w.Logger.Printf("Registering route %s", path)
-	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, w.Logger, handler))
+	w.router.HandleFunc(path, adaptHandler(w, handler))
 }
 
 // HTTP method shortcuts

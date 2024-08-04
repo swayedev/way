@@ -23,12 +23,12 @@ type Context struct {
 	db       *DB
 	Session  *Session
 	Logger   *log.Logger
-	Crypto   *crypto.Crypto
+	Crypto   *Crypto
 }
 
 // NewContext creates a new Context instance.
-func NewContext(w http.ResponseWriter, r *http.Request, d *DB, s *Session, l *log.Logger) *Context {
-	return &Context{Response: w, Request: r, db: d, Session: s, Logger: l}
+func NewContext(w http.ResponseWriter, r *http.Request, d *DB, s *Session, l *log.Logger, cr *Crypto) *Context {
+	return &Context{Response: w, Request: r, db: d, Session: s, Logger: l, Crypto: cr}
 }
 
 // Log returns the logger.
@@ -311,7 +311,7 @@ func (c *Context) DeleteCookie(name string) {
 }
 
 // Cryptographic Functions (Crypto) - Not Implemented
-func (c *Context) SetCrypto(cr *crypto.Crypto) {
+func (c *Context) SetCrypto(cr *Crypto) {
 	c.Crypto = cr
 }
 

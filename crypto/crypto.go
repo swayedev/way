@@ -14,9 +14,6 @@ const (
 	ErrCipherTextTooShort = "ciphertext too short"
 )
 
-// Crypto is an interface that defines cryptographic operations.
-type Crypto interface{}
-
 // HashStringToString hashes a string to another string.
 func HashStringToString(value string) string {
 	hash := sha256.Sum256([]byte(value))
