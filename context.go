@@ -5,11 +5,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/schema"
+
 	"github.com/gorilla/sessions"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -56,11 +60,43 @@ func (c *Context) GetSession(name string) sessions.Store {
 	return store
 }
 
+// Request Functions
+
 // Parms returns the request parameters.
 func (c *Context) Parms() map[string]string {
 	params := mux.Vars(c.Request)
 	c.Logger.Printf("Request parameters: %v", params)
 	return params
+}
+
+// Bind binds the request body into provided type `i`.
+func (c *Context) Bind(i interface{}) error {
+	contentType := c.Request.Header.Get("Content-Type")
+	if contentType == "" {
+		return errors.New("Content-Type header is missing")
+	}
+	switch {
+	case contentType == "application/json":
+		return json.NewDecoder(c.Request.Body).Decode(i)
+	case contentType == "application/xml" || contentType == "text/xml":
+		return xml.NewDecoder(c.Request.Body).Decode(i)
+	case contentType == "application/x-www-form-urlencoded":
+		if err := c.Request.ParseForm(); err != nil {
+			return err
+		}
+		decoder := schema.NewDecoder()
+		return decoder.Decode(i, c.Request.PostForm)
+	default:
+		return errors.New("unsupported Content-Type")
+	}
+}
+
+// MultipartForm returns the parsed multipart form.
+func (c *Context) MultipartForm() (*multipart.Form, error) {
+	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+		return nil, err
+	}
+	return c.Request.MultipartForm, nil
 }
 
 // SQL Execution Functions

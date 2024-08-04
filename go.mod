@@ -18,6 +18,7 @@ require (
 	github.com/godror/knownpb v0.1.2 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
+	github.com/gorilla/schema v1.4.1 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 )
