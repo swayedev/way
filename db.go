@@ -200,6 +200,10 @@ func (d *DB) PgxExecNoResult(ctx context.Context, query string, args ...interfac
 	return pgxExecNoResult(d.pgx, ctx, query, args...)
 }
 
+// please note that pgx.Rows is not the same as sql.Rows
+// pgx.Rows is an interface, sql.Rows is a struct
+// pgx.Rows is not compatible with sql.Rows
+// Always remember to close pgx.Rows
 func (d *DB) PgxQuery(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
 	return pgxQuery(d.pgx, ctx, query, args...)
 }

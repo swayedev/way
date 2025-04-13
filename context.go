@@ -43,8 +43,20 @@ func (c *Context) GetSession(name string) sessions.Store {
 	return c.Session.stores[name]
 }
 
+// Parms returns a map of string parameters associated with the http request context.
+// The keys of the map are the parameter names, and the values are the parameter values.
 func (c *Context) Parms() map[string]string {
 	return mux.Vars(c.Request)
+}
+
+// Parm returns the value of the specified parameter from the http request context.
+// I.E. in the codebase - way.GET("http://example.com/user/{userId}",...)
+// via a browser or curl request - http://example.com/user/1234
+// c.Parm("userId") returns "1234".
+// In the above example, the parameter name is "userId" and the parameter value is "1234".
+// If the parameter does not exist, an empty string is returned.
+func (c *Context) Parm(param string) string {
+	return c.Parms()[param]
 }
 
 func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
@@ -233,3 +245,8 @@ func (c *Context) Encrypt(data []byte, passphrase string) (string, error) {
 func (c *Context) Decrypt(encrypted string, passphrase string) ([]byte, error) {
 	return crypto.Decrypt(encrypted, passphrase)
 }
+
+var (
+	SqlErrNoRows = sql.ErrNoRows
+	PgxErrNoRows = pgx.ErrNoRows
+)

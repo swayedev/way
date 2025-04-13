@@ -1,10 +1,28 @@
 package database
 
 import (
+	"database/sql"
+
 	"github.com/swayedev/way/database/config"
 	wayPgx "github.com/swayedev/way/database/pgx"
 	waySql "github.com/swayedev/way/database/sql"
 )
+
+type Rows interface {
+	Delete() bool
+	Insert() bool
+	RowsAffected() int64
+	Select() bool
+	String() string
+	Update() bool
+	Close() error
+	ColumnTypes() ([]*sql.ColumnType, error)
+	Columns() ([]string, error)
+	Err() error
+	Next() bool
+	NextResultSet() bool
+	Scan(dest ...any) error
+}
 
 func Connect() (interface{}, error) {
 	switch config.GetDbType() {
