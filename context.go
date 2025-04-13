@@ -25,12 +25,15 @@ type Context struct {
 	Request  *http.Request
 	db       *DB
 	Session  *Session
+	Logger   *log.Logger
 }
 
-func NewContext(w http.ResponseWriter, r *http.Request, d *DB, s *Session) *Context {
-	return &Context{Response: w, Request: r, db: d, Session: s}
+func NewContext(w http.ResponseWriter, r *http.Request, d *DB, s *Session, l *log.Logger) *Context {
+	return &Context{Response: w, Request: r, db: d, Session: s, Logger: l}
 }
-
+func (c *Context) Log() *log.Logger {
+	return c.Logger
+}
 func (c *Context) SetSession(s *Session) {
 	c.Session = s
 }
@@ -40,13 +43,21 @@ func (c *Context) GetDB() *DB {
 }
 
 func (c *Context) GetSession(name string) sessions.Store {
-	return c.Session.stores[name]
+	store := c.Session.stores[name]
+	if store == nil {
+		c.Logger.Printf("Session store not found: %s", name)
+	} else {
+		c.Logger.Printf("Session store retrieved: %s", name)
+	}
+	return store
 }
 
 // Parms returns a map of string parameters associated with the http request context.
 // The keys of the map are the parameter names, and the values are the parameter values.
 func (c *Context) Parms() map[string]string {
-	return mux.Vars(c.Request)
+	params := mux.Vars(c.Request)
+	c.Logger.Printf("Request parameters: %v", params)
+	return params
 }
 
 // Parm returns the value of the specified parameter from the http request context.
@@ -60,38 +71,73 @@ func (c *Context) Parm(param string) string {
 }
 
 func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	return c.db.SqlExec(ctx, query, args...)
+	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
+	result, err := c.db.SQLExec(ctx, query, args...)
+	if err != nil {
+		c.Logger.Printf("Error executing SQL query: %v", err)
+	}
+	return result, err
 }
 
 func (c *Context) SqlExecNoResult(ctx context.Context, query string, args ...interface{}) error {
-	return c.db.SqlExecNoResult(ctx, query, args...)
+	c.Logger.Printf("Executing SQL query with no result: %s with args: %v", query, args)
+	err := c.db.SQLExecNoResult(ctx, query, args...)
+	if err != nil {
+		c.Logger.Printf("Error executing SQL query with no result: %v", err)
+	}
+	return err
 }
 
 func (c *Context) SqlQuery(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	return c.db.SqlQuery(ctx, query, args...)
+	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
+	rows, err := c.db.SQLQuery(ctx, query, args...)
+	if err != nil {
+		c.Logger.Printf("Error executing SQL query: %v", err)
+	}
+	return rows, err
 }
 
 func (c *Context) SqlQueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	return c.db.SqlQueryRow(ctx, query, args...)
+	c.Logger.Printf("Executing SQL query row: %s with args: %v", query, args)
+	row := c.db.SQLQueryRow(ctx, query, args...)
+	return row
 }
 
 func (c *Context) PgxExec(ctx context.Context, query string, args ...interface{}) (pgconn.CommandTag, error) {
-	return c.db.PgxExec(ctx, query, args...)
+	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
+	commandTag, err := c.db.PGXExec(ctx, query, args...)
+	if err != nil {
+		c.Logger.Printf("Error executing PGX query: %v", err)
+	}
+	return commandTag, err
 }
 
 func (c *Context) PgxExecNoResult(ctx context.Context, query string, args ...interface{}) error {
-	return c.db.PgxExecNoResult(ctx, query, args...)
+	c.Logger.Printf("Executing PGX query with no result: %s with args: %v", query, args)
+	err := c.db.PGXExecNoResult(ctx, query, args...)
+	if err != nil {
+		c.Logger.Printf("Error executing PGX query with no result: %v", err)
+	}
+	return err
 }
 
 func (c *Context) PgxQuery(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
-	return c.db.PgxQuery(ctx, query, args...)
+	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
+	rows, err := c.db.PGXQuery(ctx, query, args...)
+	if err != nil {
+		c.Logger.Printf("Error executing PGX query: %v", err)
+	}
+	return rows, err
 }
 
 func (c *Context) PgxQueryRow(ctx context.Context, query string, args ...interface{}) pgx.Row {
-	return c.db.PgxQueryRow(ctx, query, args...)
+	c.Logger.Printf("Executing PGX query row: %s with args: %v", query, args)
+	row := c.db.PGXQueryRow(ctx, query, args...)
+	return row
 }
 
 func (c *Context) Redirect(code int, url string) {
+	c.Logger.Printf("Redirecting to URL: %s with status code: %d", url, code)
 	http.Redirect(c.Response, c.Request, url, code)
 }
 
@@ -99,16 +145,18 @@ func (c *Context) JSON(code int, i interface{}) {
 	c.Response.Header().Set("Content-Type", "application/json")
 	c.Response.WriteHeader(code)
 	if err := json.NewEncoder(c.Response).Encode(i); err != nil {
-		// handle error, e.g., log it or send an internal server error
-		log.Printf("Error encoding JSON response: %v \n", err)
+		c.Logger.Printf("Error encoding JSON response: %v", err)
+		http.Error(c.Response, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
+// HTML sends an HTML response with the specified status code.
 func (c *Context) HTML(code int, htmlContent string) {
 	c.Response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	c.Response.WriteHeader(code)
 	if _, err := c.Response.Write([]byte(htmlContent)); err != nil {
-		log.Printf("Error writing HTML response: %v \n", err)
+		c.Logger.Printf("Error writing HTML response: %v", err)
+		http.Error(c.Response, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -117,11 +165,17 @@ func (c *Context) String(code int, i interface{}) {
 	c.Response.WriteHeader(code)
 	switch v := i.(type) {
 	case string:
-		c.Response.Write([]byte(v))
+		_, err := c.Response.Write([]byte(v))
+		if err != nil {
+			c.Logger.Printf("Error writing string response: %v", err)
+		}
 	case []byte:
-		c.Response.Write(v)
+		_, err := c.Response.Write(v)
+		if err != nil {
+			c.Logger.Printf("Error writing byte response: %v", err)
+		}
 	default:
-		log.Printf("Error encoding String response: %v \n", v)
+		c.Logger.Printf("Error encoding string response: unsupported type %v", v)
 	}
 }
 
@@ -129,37 +183,40 @@ func (c *Context) XML(code int, i interface{}) {
 	c.Response.Header().Set("Content-Type", "application/xml")
 	c.Response.WriteHeader(code)
 	if err := xml.NewEncoder(c.Response).Encode(i); err != nil {
-		log.Printf("Error encoding XML response: %v \n", err)
+		c.Logger.Printf("Error encoding XML response: %v", err)
+		http.Error(c.Response, "Internal Server Error", http.StatusInternalServerError)
 	}
-
 }
 
 func (c *Context) Data(code int, data []byte) {
 	c.Response.WriteHeader(code)
 	if _, err := c.Response.Write(data); err != nil {
-		log.Printf("Error writing data: %v \n", err)
+		c.Logger.Printf("Error writing data: %v", err)
 	}
 }
 
 func (c *Context) Status(code int) {
 	c.Response.WriteHeader(code)
+	c.Logger.Printf("Status set to %d", code)
 }
 
 func (c *Context) Image(code int, contentType string, imageData []byte) {
 	c.Response.Header().Set("Content-Type", contentType)
 	c.Response.WriteHeader(code)
 	if _, err := c.Response.Write(imageData); err != nil {
-		log.Printf("Error writing image data: %v \n", err)
+		c.Logger.Printf("Error writing image data: %v", err)
 	}
 }
 
 func (c *Context) SetHeader(key string, value string) {
 	c.Response.Header().Set(key, value)
+	c.Logger.Printf("Header set: %s = %s", key, value)
 }
 
 func (c *Context) ProxyMedia(mediaURL string) {
 	resp, err := http.Get(mediaURL)
 	if err != nil {
+		c.Logger.Printf("Failed to fetch media from URL: %s, error: %v", mediaURL, err)
 		http.Error(c.Response, "Failed to fetch media", http.StatusInternalServerError)
 		return
 	}
@@ -174,11 +231,14 @@ func (c *Context) ProxyMedia(mediaURL string) {
 
 	// Stream the content
 	c.Response.WriteHeader(resp.StatusCode)
-	io.Copy(c.Response, resp.Body)
+	if _, err := io.Copy(c.Response, resp.Body); err != nil {
+		c.Logger.Printf("Error streaming media: %v", err)
+	}
 }
 
 func (c *Context) SetCookie(cookie *http.Cookie) {
 	http.SetCookie(c.Response, cookie)
+	c.Logger.Printf("Cookie set: %s", cookie.String())
 }
 
 func (c *Context) GetCookie(name string) (*http.Cookie, error) {
