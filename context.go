@@ -57,17 +57,29 @@ func (c *Context) GetSession(name string) sessions.Store {
 	return store
 }
 
-// Parms returns the request parameters.
+// Parms returns a map of string parameters associated with the http request context.
+// The keys of the map are the parameter names, and the values are the parameter values.
 func (c *Context) Parms() map[string]string {
 	params := mux.Vars(c.Request)
 	c.Logger.Printf("Request parameters: %v", params)
 	return params
 }
 
-// MultipartForm returns the parsed multipart form.
-func (c *Context) MultipartForm() (*multipart.Form, error) {
-	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
-		return nil, err
+// Parm returns the value of the specified parameter from the http request context.
+// I.E. in the codebase - way.GET("http://example.com/user/{userId}",...)
+// via a browser or curl request - http://example.com/user/1234
+// c.Parm("userId") returns "1234".
+// In the above example, the parameter name is "userId" and the parameter value is "1234".
+// If the parameter does not exist, an empty string is returned.
+func (c *Context) Parm(param string) string {
+	return c.Parms()[param]
+}
+
+func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
+	result, err := c.db.SQLExec(ctx, query, args...)
+	if err != nil {
+		c.Logger.Printf("Error executing SQL query: %v", err)
 	}
 	return c.Request.MultipartForm, nil
 }
@@ -352,3 +364,8 @@ func (c *Context) Decrypt(encrypted string, passphrase string) ([]byte, error) {
 	}
 	return decrypted, err
 }
+
+var (
+	SqlErrNoRows = sql.ErrNoRows
+	PgxErrNoRows = pgx.ErrNoRows
+)
