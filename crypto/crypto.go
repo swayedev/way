@@ -1,14 +1,12 @@
 package crypto
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
 	"io"
-
 	"log"
 
+	"github.com/swayedev/fcrypt"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -29,8 +27,7 @@ type Crypto interface {
 
 // HashStringToString takes a string as input and returns its SHA3-256 hash as a hexadecimal string.
 func HashStringToString(data string) string {
-	hashArray := sha3.Sum256([]byte(data))
-	return hex.EncodeToString(hashArray[:])
+	return fcrypt.HashStringToStringSHA3(data)
 }
 
 // HashString calculates the SHA3-256 hash of the input string.
@@ -48,19 +45,10 @@ func HashByte(data []byte) [32]byte {
 // Encrypt encrypts the given data using the provided passphrase.
 // It returns the encrypted data as a hexadecimal string and any error encountered.
 func Encrypt(data []byte, passphrase string) (string, error) {
-	block, err := aes.NewCipher([]byte(passphrase))
+	ciphertext, err := fcrypt.Encrypt(data, []byte(passphrase))
 	if err != nil {
 		return "", err
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-	ciphertext := gcm.Seal(nonce, nonce, data, nil)
 	return hex.EncodeToString(ciphertext), nil
 }
 
@@ -68,21 +56,11 @@ func Encrypt(data []byte, passphrase string) (string, error) {
 // It returns the decrypted data as a byte slice.
 // If an error occurs during decryption, it returns nil and the corresponding error.
 func Decrypt(encrypted string, passphrase string) ([]byte, error) {
-	block, err := aes.NewCipher([]byte(passphrase))
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
 	data, err := hex.DecodeString(encrypted)
 	if err != nil {
 		return nil, err
 	}
-	nonceSize := gcm.NonceSize()
-	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	return gcm.Open(nil, nonce, ciphertext, nil)
+	return fcrypt.Decrypt(data, []byte(passphrase))
 }
 
 // GenerateRandomKey generates a random key of the specified length.
@@ -91,7 +69,7 @@ func Decrypt(encrypted string, passphrase string) ([]byte, error) {
 func GenerateRandomKey(length int) []byte {
 	key := make([]byte, length)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		log.Printf("failed to generate random key: " + err.Error())
+		log.Printf("failed to generate random key: %v", err)
 		return nil
 	}
 	return key
