@@ -39,13 +39,13 @@ func PGXExec(db *pgx.Conn, ctx context.Context, query string, args ...interface{
 	if db == nil {
 		return pgconn.CommandTag{}, errors.New("database connection is not initialized")
 	}
-	log.Printf("Executing query: %s with args: %v", query, args)
+	log.Printf("Executing PGX statement")
 	tag, err := db.Exec(ctx, query, args...)
 	if err != nil {
 		log.Printf("Error executing query: %v", err)
 		return pgconn.CommandTag{}, err
 	}
-	log.Printf("Query executed successfully: %s", query)
+	log.Printf("PGX statement executed successfully")
 	return tag, nil
 }
 
@@ -53,7 +53,7 @@ func PGXExec(db *pgx.Conn, ctx context.Context, query string, args ...interface{
 // 	if pool == nil {
 // 		return pgconn.CommandTag{}, errors.New("pgx pool is not initialized")
 // 	}
-// 	log.Printf("Executing pgx query: %s with args: %v", query, args)
+// 	log.Printf("Executing pgx query")
 // 	tag, err := pool.Exec(ctx, query, args...)
 // 	if err != nil {
 // 		return pgconn.CommandTag{}, fmt.Errorf("failed to execute pgx query: %w", err)
@@ -76,13 +76,13 @@ func PGXQuery(db *pgx.Conn, ctx context.Context, query string, args ...interface
 	if db == nil {
 		return nil, errors.New("database connection is not initialized")
 	}
-	log.Printf("Executing query: %s with args: %v", query, args)
+	log.Printf("Executing PGX query")
 	rows, err := db.Query(ctx, query, args...)
 	if err != nil {
 		log.Printf("Error executing query: %v", err)
 		return nil, err
 	}
-	log.Printf("Query executed successfully: %s", query)
+	log.Printf("PGX query executed successfully")
 	return rows, nil
 }
 
@@ -91,6 +91,6 @@ func PGXQueryRow(db *pgx.Conn, ctx context.Context, query string, args ...interf
 	if db == nil {
 		return nil
 	}
-	log.Printf("Executing query row: %s with args: %v", query, args)
+	log.Printf("Executing PGX query row")
 	return db.QueryRow(ctx, query, args...)
 }

@@ -97,6 +97,9 @@ func (d *DB) PGXOpen(dsn string) error {
 func (d *DB) SQLOpen(driver, dsn string) error {
 	d.UsePgx = false
 	d.Driver = database.CheckDriver(driver)
+	if d.Driver == "" {
+		return fmt.Errorf("unsupported SQL driver %q", driver)
+	}
 	db, err := database.SQLConnect(d.Driver, dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open sql database connection: %w", err)

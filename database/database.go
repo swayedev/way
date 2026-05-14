@@ -2,12 +2,6 @@ package database
 
 import (
 	"fmt"
-
-	_ "github.com/denisenkom/go-mssqldb" // Microsoft SQL Server
-	_ "github.com/go-sql-driver/mysql"   // MySQL
-	_ "github.com/godror/godror"         // Oracle
-	_ "github.com/jackc/pgx/v5/stdlib"   // PostgreSQL
-	_ "github.com/mattn/go-sqlite3"      // SQLite
 )
 
 // CheckDriver checks and returns the appropriate driver
@@ -29,6 +23,26 @@ func CheckDriver(driver string) string {
 		return "sqlserver"
 	default:
 		return ""
+	}
+}
+
+// DriverImportHint returns the optional import package for a normalized SQL driver.
+func DriverImportHint(driver string) string {
+	switch CheckDriver(driver) {
+	case "mysql":
+		return `import _ "github.com/swayedev/way/database/drivers/mysql"`
+	case "pgx":
+		return `import _ "github.com/swayedev/way/database/drivers/pgx"`
+	case "sqlite3":
+		return `import _ "github.com/swayedev/way/database/drivers/sqlite"`
+	case "sqlserver":
+		return `import _ "github.com/swayedev/way/database/drivers/sqlserver"`
+	case "godror":
+		return `import _ "github.com/swayedev/way/database/drivers/godror"`
+	case "clickhouse", "firebirdsql":
+		return "register a compatible database/sql driver before opening the connection"
+	default:
+		return "use database.CheckDriver to normalize a supported driver name"
 	}
 }
 

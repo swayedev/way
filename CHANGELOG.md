@@ -19,11 +19,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **API Freeze Documentation**: Added [API_FREEZE.md](API_FREEZE.md) to document the stable public API surface.
 - **Security Policy**: Added [SECURITY.md](SECURITY.md) with security considerations, best practices, and hardening guidance.
 - **Migration Guide**: Added [MIGRATION.md](MIGRATION.md) to help users upgrade from pre-1.0 versions.
-- **Linter Configuration**: Added `.golangci.yml` for code quality checks.
+- **Production Checklist**: Added [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md) for deployment and release checks.
+- **Optional Database Driver Adapters**: Added driver registration packages under `database/drivers`.
+- **Configurable Proxy Client**: Added `SetHTTPClient()` for timeout-bound outbound context helpers.
 
 ### Changed
 
 - **ASCII Art Logging**: Server startup ASCII art is now disabled by default and can be enabled with `WAY_LOG_ASCII_ART=true` environment variable.
+- **Database Driver Registration**: Core database packages no longer blank-import every SQL driver.
+- **Safer Default Logging**: SQL helpers and context helpers no longer log SQL args, raw query text, header values, cookie values, or proxied URLs by default.
+- **Session Error Handling**: Missing session stores and secure cookies return explicit errors from new `*E` methods and encrypted-cookie helpers instead of panicking.
+- **Response Helpers**: JSON and XML helpers encode before writing headers so encoder failures return clean 500 responses.
+- **Crypto Integration**: Way crypto helpers delegate to fcrypt `v1.0.0-rc1` while preserving hex string ciphertext output.
 - **README Updates**: Updated [README.md](README.md) to reflect v1.0.0-rc1 status and link documentation.
 - **VERSION File**: Updated to `1.0.0-rc1`.
 
@@ -33,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 2. **GenerateRandomKey Signature**: `way/crypto.GenerateRandomKey()` now returns `([]byte, error)` instead of `[]byte`.
 3. **HTTP Server Timeouts**: `way.New()` now sets default timeouts. If you relied on different timeout behavior, update your server configuration after calling `New()`.
 4. **ASCII Art Disabled**: Startup ASCII art is now off by default; set `WAY_LOG_ASCII_ART=true` to re-enable.
+5. **SQL Driver Imports**: Applications must import the matching `github.com/swayedev/way/database/drivers/...` package for SQL drivers they use.
 
 ### Security
 

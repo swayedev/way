@@ -9,7 +9,9 @@ Way v1.0.0-rc1 introduces production-readiness improvements:
 1. Safe HTTP server defaults (timeouts)
 2. Error returns instead of `log.Fatalf` for configuration functions
 3. Gated ASCII art logging
-4. Comprehensive error path testing
+4. fcrypt-backed crypto helpers that keep legacy hex ciphertext output
+5. Optional database driver adapter packages
+6. Session and secure-cookie helpers that return errors for missing stores/cookies instead of panicking
 
 ## Migration Steps
 
@@ -112,14 +114,58 @@ Also update fcrypt to match:
 go get -u github.com/swayedev/fcrypt@v1.0.0-rc1
 ```
 
+### Step 6: Import Database Driver Adapters
+
+Way no longer blank-imports every SQL driver from the core database package. Add the adapter package for each driver your application opens:
+
+```go
+import (
+	"github.com/swayedev/way"
+
+	_ "github.com/swayedev/way/database/drivers/mysql"
+)
+```
+
+Adapter packages are available for:
+
+- `github.com/swayedev/way/database/drivers/mysql`
+- `github.com/swayedev/way/database/drivers/pgx`
+- `github.com/swayedev/way/database/drivers/sqlite`
+- `github.com/swayedev/way/database/drivers/sqlserver`
+- `github.com/swayedev/way/database/drivers/godror`
+
+If a driver is missing, SQL connection helpers now return an error with an import hint.
+
+### Step 7: Prefer Error-Returning Session Lookups
+
+Compatibility methods such as `session.Store(name)` and `session.Cookie(name)` still return `nil` for missing entries. New code should prefer:
+
+```go
+store, err := session.StoreE("app")
+cookie, err := session.CookieE("secure")
+```
+
+Encrypted-cookie helpers now return `ErrSecureCookieNotFound` when a named secure cookie is missing instead of panicking.
+
+### Step 8: Review ProxyMedia Client Configuration
+
+`Context.ProxyMedia` now uses Way's configured HTTP client with a 15 second timeout by default. Override it when you need custom transports or shorter proxy timeouts:
+
+```go
+w := way.New()
+w.SetHTTPClient(&http.Client{Timeout: 5 * time.Second})
+```
+
 ## Backward Compatibility
 
 - All public `Way`, `Context`, `Session`, `DB`, and `crypto` APIs remain stable.
+- `crypto.Encrypt` and `crypto.Decrypt` still use Way's hex string format while delegating implementation to fcrypt `v1.0.0-rc1`.
 - Breaking changes are limited to:
   - Error returns for configuration functions (if you were calling them directly)
   - `GenerateRandomKey()` signature change
   - HTTP server timeout defaults (review if you had custom timeouts)
   - ASCII art disabled by default
+  - Required SQL driver adapter imports
 
 ## Testing Your Migration
 

@@ -1,6 +1,8 @@
 package way
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -45,6 +47,59 @@ func TestNewInitializesLogger(t *testing.T) {
 
 	if w.Logger == nil {
 		t.Error("New() Logger is nil")
+	}
+}
+
+func TestNewInitializesHTTPClient(t *testing.T) {
+	w := New()
+
+	if w.HTTPClient == nil {
+		t.Fatal("New() HTTPClient is nil")
+	}
+	if w.HTTPClient.Timeout != 15*time.Second {
+		t.Fatalf("HTTPClient timeout = %v, want %v", w.HTTPClient.Timeout, 15*time.Second)
+	}
+}
+
+func TestSetHTTPClientNilResetsDefault(t *testing.T) {
+	w := New()
+	w.SetHTTPClient(&http.Client{Timeout: time.Second})
+	w.SetHTTPClient(nil)
+
+	if w.HTTPClient == nil {
+		t.Fatal("HTTPClient is nil")
+	}
+	if w.HTTPClient.Timeout != 15*time.Second {
+		t.Fatalf("HTTPClient timeout = %v, want %v", w.HTTPClient.Timeout, 15*time.Second)
+	}
+}
+
+func TestHTTPMethodHelpersRegisterRoutes(t *testing.T) {
+	methods := map[string]func(*Way, string, HandlerFunc){
+		http.MethodGet:     (*Way).GET,
+		http.MethodPost:    (*Way).POST,
+		http.MethodPut:     (*Way).PUT,
+		http.MethodDelete:  (*Way).DELETE,
+		http.MethodPatch:   (*Way).PATCH,
+		http.MethodOptions: (*Way).OPTIONS,
+		http.MethodHead:    (*Way).HEAD,
+	}
+
+	for method, register := range methods {
+		t.Run(method, func(t *testing.T) {
+			w := New()
+			register(w, "/route", func(c *Context) {
+				c.Status(http.StatusNoContent)
+			})
+
+			req := httptest.NewRequest(method, "/route", nil)
+			rec := httptest.NewRecorder()
+			w.router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+			}
+		})
 	}
 }
 

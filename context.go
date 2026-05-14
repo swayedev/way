@@ -1,10 +1,12 @@
 package way
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -21,18 +23,32 @@ import (
 // db is the way database connection.
 // Session is the way session.
 type Context struct {
-	Response http.ResponseWriter
-	Request  *http.Request
-	db       *DB
-	Session  *Session
-	Logger   *log.Logger
+	Response   http.ResponseWriter
+	Request    *http.Request
+	db         *DB
+	Session    *Session
+	Logger     *log.Logger
+	HTTPClient *http.Client
 }
 
 func NewContext(w http.ResponseWriter, r *http.Request, d *DB, s *Session, l *log.Logger) *Context {
-	return &Context{Response: w, Request: r, db: d, Session: s, Logger: l}
+	return newContextWithHTTPClient(w, r, d, s, l, defaultHTTPClient())
+}
+
+func newContextWithHTTPClient(w http.ResponseWriter, r *http.Request, d *DB, s *Session, l *log.Logger, client *http.Client) *Context {
+	if l == nil {
+		l = defaultLogger()
+	}
+	if client == nil {
+		client = defaultHTTPClient()
+	}
+	return &Context{Response: w, Request: r, db: d, Session: s, Logger: l, HTTPClient: client}
 }
 func (c *Context) Log() *log.Logger {
-	return c.Logger
+	if c.Logger != nil {
+		return c.Logger
+	}
+	return defaultLogger()
 }
 func (c *Context) SetSession(s *Session) {
 	c.Session = s
@@ -43,20 +59,26 @@ func (c *Context) GetDB() *DB {
 }
 
 func (c *Context) GetSession(name string) sessions.Store {
-	store := c.Session.stores[name]
-	if store == nil {
-		c.Logger.Printf("Session store not found: %s", name)
-	} else {
-		c.Logger.Printf("Session store retrieved: %s", name)
+	store, err := c.GetSessionE(name)
+	if err != nil {
+		c.Log().Printf("Session store not found: %s", name)
+		return nil
 	}
+	c.Log().Printf("Session store retrieved: %s", name)
 	return store
+}
+
+func (c *Context) GetSessionE(name string) (sessions.Store, error) {
+	if c.Session == nil {
+		return nil, errors.New("session manager is not initialized")
+	}
+	return c.Session.StoreE(name)
 }
 
 // Parms returns a map of string parameters associated with the http request context.
 // The keys of the map are the parameter names, and the values are the parameter values.
 func (c *Context) Parms() map[string]string {
 	params := mux.Vars(c.Request)
-	c.Logger.Printf("Request parameters: %v", params)
 	return params
 }
 
@@ -71,82 +93,87 @@ func (c *Context) Parm(param string) string {
 }
 
 func (c *Context) SqlExec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
+	c.Log().Printf("Executing SQL query")
 	result, err := c.db.SQLExec(ctx, query, args...)
 	if err != nil {
-		c.Logger.Printf("Error executing SQL query: %v", err)
+		c.Log().Printf("Error executing SQL query: %v", err)
 	}
 	return result, err
 }
 
 func (c *Context) SqlExecNoResult(ctx context.Context, query string, args ...interface{}) error {
-	c.Logger.Printf("Executing SQL query with no result: %s with args: %v", query, args)
+	c.Log().Printf("Executing SQL query with no result")
 	err := c.db.SQLExecNoResult(ctx, query, args...)
 	if err != nil {
-		c.Logger.Printf("Error executing SQL query with no result: %v", err)
+		c.Log().Printf("Error executing SQL query with no result: %v", err)
 	}
 	return err
 }
 
 func (c *Context) SqlQuery(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	c.Logger.Printf("Executing SQL query: %s with args: %v", query, args)
+	c.Log().Printf("Executing SQL query")
 	rows, err := c.db.SQLQuery(ctx, query, args...)
 	if err != nil {
-		c.Logger.Printf("Error executing SQL query: %v", err)
+		c.Log().Printf("Error executing SQL query: %v", err)
 	}
 	return rows, err
 }
 
 func (c *Context) SqlQueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	c.Logger.Printf("Executing SQL query row: %s with args: %v", query, args)
+	c.Log().Printf("Executing SQL query row")
 	row := c.db.SQLQueryRow(ctx, query, args...)
 	return row
 }
 
 func (c *Context) PgxExec(ctx context.Context, query string, args ...interface{}) (pgconn.CommandTag, error) {
-	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
+	c.Log().Printf("Executing PGX query")
 	commandTag, err := c.db.PGXExec(ctx, query, args...)
 	if err != nil {
-		c.Logger.Printf("Error executing PGX query: %v", err)
+		c.Log().Printf("Error executing PGX query: %v", err)
 	}
 	return commandTag, err
 }
 
 func (c *Context) PgxExecNoResult(ctx context.Context, query string, args ...interface{}) error {
-	c.Logger.Printf("Executing PGX query with no result: %s with args: %v", query, args)
+	c.Log().Printf("Executing PGX query with no result")
 	err := c.db.PGXExecNoResult(ctx, query, args...)
 	if err != nil {
-		c.Logger.Printf("Error executing PGX query with no result: %v", err)
+		c.Log().Printf("Error executing PGX query with no result: %v", err)
 	}
 	return err
 }
 
 func (c *Context) PgxQuery(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
-	c.Logger.Printf("Executing PGX query: %s with args: %v", query, args)
+	c.Log().Printf("Executing PGX query")
 	rows, err := c.db.PGXQuery(ctx, query, args...)
 	if err != nil {
-		c.Logger.Printf("Error executing PGX query: %v", err)
+		c.Log().Printf("Error executing PGX query: %v", err)
 	}
 	return rows, err
 }
 
 func (c *Context) PgxQueryRow(ctx context.Context, query string, args ...interface{}) pgx.Row {
-	c.Logger.Printf("Executing PGX query row: %s with args: %v", query, args)
+	c.Log().Printf("Executing PGX query row")
 	row := c.db.PGXQueryRow(ctx, query, args...)
 	return row
 }
 
 func (c *Context) Redirect(code int, url string) {
-	c.Logger.Printf("Redirecting to URL: %s with status code: %d", url, code)
+	c.Log().Printf("Redirecting with status code: %d", code)
 	http.Redirect(c.Response, c.Request, url, code)
 }
 
 func (c *Context) JSON(code int, i interface{}) {
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(i); err != nil {
+		c.Log().Printf("Error encoding JSON response: %v", err)
+		http.Error(c.Response, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 	c.Response.Header().Set("Content-Type", "application/json")
 	c.Response.WriteHeader(code)
-	if err := json.NewEncoder(c.Response).Encode(i); err != nil {
-		c.Logger.Printf("Error encoding JSON response: %v", err)
-		http.Error(c.Response, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	if _, err := c.Response.Write(body.Bytes()); err != nil {
+		c.Log().Printf("Error writing JSON response: %v", err)
 	}
 }
 
@@ -155,8 +182,7 @@ func (c *Context) HTML(code int, htmlContent string) {
 	c.Response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	c.Response.WriteHeader(code)
 	if _, err := c.Response.Write([]byte(htmlContent)); err != nil {
-		c.Logger.Printf("Error writing HTML response: %v", err)
-		http.Error(c.Response, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.Log().Printf("Error writing HTML response: %v", err)
 	}
 }
 
@@ -167,56 +193,65 @@ func (c *Context) String(code int, i interface{}) {
 	case string:
 		_, err := c.Response.Write([]byte(v))
 		if err != nil {
-			c.Logger.Printf("Error writing string response: %v", err)
+			c.Log().Printf("Error writing string response: %v", err)
 		}
 	case []byte:
 		_, err := c.Response.Write(v)
 		if err != nil {
-			c.Logger.Printf("Error writing byte response: %v", err)
+			c.Log().Printf("Error writing byte response: %v", err)
 		}
 	default:
-		c.Logger.Printf("Error encoding string response: unsupported type %v", v)
+		c.Log().Printf("Error encoding string response: unsupported type %T", v)
 	}
 }
 
 func (c *Context) XML(code int, i interface{}) {
+	var body bytes.Buffer
+	if err := xml.NewEncoder(&body).Encode(i); err != nil {
+		c.Log().Printf("Error encoding XML response: %v", err)
+		http.Error(c.Response, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 	c.Response.Header().Set("Content-Type", "application/xml")
 	c.Response.WriteHeader(code)
-	if err := xml.NewEncoder(c.Response).Encode(i); err != nil {
-		c.Logger.Printf("Error encoding XML response: %v", err)
-		http.Error(c.Response, "Internal Server Error", http.StatusInternalServerError)
+	if _, err := c.Response.Write(body.Bytes()); err != nil {
+		c.Log().Printf("Error writing XML response: %v", err)
 	}
 }
 
 func (c *Context) Data(code int, data []byte) {
 	c.Response.WriteHeader(code)
 	if _, err := c.Response.Write(data); err != nil {
-		c.Logger.Printf("Error writing data: %v", err)
+		c.Log().Printf("Error writing data: %v", err)
 	}
 }
 
 func (c *Context) Status(code int) {
 	c.Response.WriteHeader(code)
-	c.Logger.Printf("Status set to %d", code)
+	c.Log().Printf("Status set to %d", code)
 }
 
 func (c *Context) Image(code int, contentType string, imageData []byte) {
 	c.Response.Header().Set("Content-Type", contentType)
 	c.Response.WriteHeader(code)
 	if _, err := c.Response.Write(imageData); err != nil {
-		c.Logger.Printf("Error writing image data: %v", err)
+		c.Log().Printf("Error writing image data: %v", err)
 	}
 }
 
 func (c *Context) SetHeader(key string, value string) {
 	c.Response.Header().Set(key, value)
-	c.Logger.Printf("Header set: %s = %s", key, value)
+	c.Log().Printf("Header set: %s", key)
 }
 
 func (c *Context) ProxyMedia(mediaURL string) {
-	resp, err := http.Get(mediaURL)
+	client := c.HTTPClient
+	if client == nil {
+		client = defaultHTTPClient()
+	}
+	resp, err := client.Get(mediaURL)
 	if err != nil {
-		c.Logger.Printf("Failed to fetch media from URL: %s, error: %v", mediaURL, err)
+		c.Log().Printf("Failed to fetch media: %v", err)
 		http.Error(c.Response, "Failed to fetch media", http.StatusInternalServerError)
 		return
 	}
@@ -232,13 +267,13 @@ func (c *Context) ProxyMedia(mediaURL string) {
 	// Stream the content
 	c.Response.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(c.Response, resp.Body); err != nil {
-		c.Logger.Printf("Error streaming media: %v", err)
+		c.Log().Printf("Error streaming media: %v", err)
 	}
 }
 
 func (c *Context) SetCookie(cookie *http.Cookie) {
 	http.SetCookie(c.Response, cookie)
-	c.Logger.Printf("Cookie set: %s", cookie.String())
+	c.Log().Printf("Cookie set: %s", cookie.Name)
 }
 
 func (c *Context) GetCookie(name string) (*http.Cookie, error) {

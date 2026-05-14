@@ -4,26 +4,25 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
-
-	_ "github.com/denisenkom/go-mssqldb" // Microsoft SQL Server
-	_ "github.com/go-sql-driver/mysql"   // MySQL
-	_ "github.com/godror/godror"         // Oracle
-	_ "github.com/jackc/pgx/v5/stdlib"   // PostgreSQL
-	_ "github.com/mattn/go-sqlite3"      // SQLite
 )
 
 // SQLConnect opens a connection to the specified database and checks if it is alive.
 func SQLConnect(driver, dsn string) (*sql.DB, error) {
+	if driver == "" {
+		return nil, errors.New("database driver is not set")
+	}
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		log.Printf("Failed to open database connection: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("open %s database connection: %w; %s", driver, err, DriverImportHint(driver))
 	}
 
 	if err = db.Ping(); err != nil {
 		log.Printf("Failed to ping database: %v", err)
-		return nil, err
+		db.Close()
+		return nil, fmt.Errorf("ping %s database connection: %w; %s", driver, err, DriverImportHint(driver))
 	}
 
 	log.Printf("Successfully connected to the database with driver %s", driver)
@@ -35,13 +34,13 @@ func SQLExec(db *sql.DB, ctx context.Context, query string, args ...interface{})
 	if db == nil {
 		return nil, errors.New("database connection is not initialized")
 	}
-	log.Printf("Executing query: %s with args: %v", query, args)
+	log.Printf("Executing SQL statement")
 	result, err := db.ExecContext(ctx, query, args...)
 	if err != nil {
 		log.Printf("Error executing query: %v", err)
 		return nil, err
 	}
-	log.Printf("Query executed successfully: %s", query)
+	log.Printf("SQL statement executed successfully")
 	return result, nil
 }
 
@@ -59,13 +58,13 @@ func SQLQuery(db *sql.DB, ctx context.Context, query string, args ...interface{}
 	if db == nil {
 		return nil, errors.New("database connection is not initialized")
 	}
-	log.Printf("Executing query: %s with args: %v", query, args)
+	log.Printf("Executing SQL query")
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		log.Printf("Error executing query: %v", err)
 		return nil, err
 	}
-	log.Printf("Query executed successfully: %s", query)
+	log.Printf("SQL query executed successfully")
 	return rows, nil
 }
 
@@ -74,6 +73,6 @@ func SQLQueryRow(db *sql.DB, ctx context.Context, query string, args ...interfac
 	if db == nil {
 		return nil
 	}
-	log.Printf("Executing query row: %s with args: %v", query, args)
+	log.Printf("Executing SQL query row")
 	return db.QueryRowContext(ctx, query, args...)
 }

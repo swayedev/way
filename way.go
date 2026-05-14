@@ -32,6 +32,8 @@ type Way struct {
 	Listener net.Listener
 	// Logger is the logger.
 	Logger *log.Logger
+	// HTTPClient is used by context helpers that make outbound HTTP requests.
+	HTTPClient *http.Client
 }
 
 // HandlerFunc is a function type that represents a handler for a request.
@@ -57,10 +59,11 @@ func New() *Way {
 		IdleTimeout:       30 * time.Second,
 	}
 	return &Way{
-		router:   mux.NewRouter(),
-		Server:   server,
-		sessions: sessions,
-		Logger:   defaultLogger(),
+		router:     mux.NewRouter(),
+		Server:     server,
+		sessions:   sessions,
+		Logger:     defaultLogger(),
+		HTTPClient: defaultHTTPClient(),
 	}
 }
 
@@ -82,6 +85,15 @@ func (w *Way) SetServer(server *http.Server) {
 // SetListener sets the network listener.
 func (w *Way) SetListener(listener net.Listener) {
 	w.Listener = listener
+}
+
+// SetHTTPClient sets the client used by context helpers that make outbound HTTP requests.
+func (w *Way) SetHTTPClient(client *http.Client) {
+	if client == nil {
+		w.HTTPClient = defaultHTTPClient()
+		return
+	}
+	w.HTTPClient = client
 }
 
 // Log returns the logger.
@@ -141,7 +153,7 @@ func (w *Way) SetSession(s *Session) {
 func (w *Way) Use(middleware ...MiddlewareFunc) {
 	w.router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
-			ctx := NewContext(wr, r, w.db, w.sessions, w.Logger)
+			ctx := newContextWithHTTPClient(wr, r, w.db, w.sessions, w.Logger, w.HTTPClient)
 
 			handler := func(c *Context) {
 				next.ServeHTTP(wr, r)
@@ -157,23 +169,23 @@ func (w *Way) Use(middleware ...MiddlewareFunc) {
 }
 
 // adaptHandler adapts a HandlerFunc to http.HandlerFunc.
-func adaptHandler(db *DB, s *Session, l *log.Logger, handler HandlerFunc) http.HandlerFunc {
+func adaptHandler(db *DB, s *Session, l *log.Logger, client *http.Client, handler HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := NewContext(w, r, db, s, l)
+		ctx := newContextWithHTTPClient(w, r, db, s, l, client)
 		handler(ctx)
 	}
 }
 
 // handleFuncWithMethod registers a new route with a matcher for the URL path and the HTTP method.
 func (w *Way) handleFuncWithMethod(path string, handler HandlerFunc, method string) {
-	w.Logger.Printf("Registering route %s", path)
-	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, w.Logger, handler)).Methods(method)
+	w.Log().Printf("Registering route %s", path)
+	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, w.Logger, w.HTTPClient, handler)).Methods(method)
 }
 
 // HandleFunc registers a new route with a matcher for the URL path.
 func (w *Way) HandleFunc(path string, handler HandlerFunc) {
-	w.Logger.Printf("Registering route %s", path)
-	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, w.Logger, handler))
+	w.Log().Printf("Registering route %s", path)
+	w.router.HandleFunc(path, adaptHandler(w.db, w.sessions, w.Logger, w.HTTPClient, handler))
 }
 
 // HTTP method shortcuts
@@ -204,8 +216,8 @@ func (w *Way) Start(address string) error {
 	if err != nil {
 		return err
 	}
-	w.Server.Handler = loggingMiddleware(w.Logger, w.router)
-	w.Logger.Printf("Server started at %s", address)
+	w.Server.Handler = loggingMiddleware(w.Log(), w.router)
+	w.Log().Printf("Server started at %s", address)
 	if GetEnv("WAY_LOG_ASCII_ART", "") == "true" {
 		asciiArt := `
 	__        ______   __
@@ -221,25 +233,25 @@ func (w *Way) Start(address string) error {
 
 // Close immediately stops the server.
 func (w *Way) Close() error {
-	w.Logger.Println("Server stopping...")
+	w.Log().Println("Server stopping...")
 	w.startupMutex.Lock()
 	defer w.startupMutex.Unlock()
-	w.Logger.Println("Server stopped")
+	w.Log().Println("Server stopped")
 	return w.Server.Close()
 }
 
 // Shutdown stops the server gracefully.
 func (w *Way) Shutdown(ctx context.Context) error {
-	w.Logger.Println("Server stopping gracefully...")
+	w.Log().Println("Server stopping gracefully...")
 	w.startupMutex.Lock()
 	defer w.startupMutex.Unlock()
-	w.Logger.Println("Server stopped gracefully")
+	w.Log().Println("Server stopped gracefully")
 	return w.Server.Shutdown(ctx)
 }
 
 // Db returns the database instance.
 func (w *Way) Db() *DB {
-	w.Logger.Println("Database instance returned")
+	w.Log().Println("Database instance returned")
 	return w.db
 }
 
@@ -276,6 +288,10 @@ const (
 // defaultLogger returns a new logger that writes to os.Stdout.
 func defaultLogger() *log.Logger {
 	return log.New(os.Stdout, GetEnv(envDefaultLogger, "WAY_INFO")+": ", log.LstdFlags)
+}
+
+func defaultHTTPClient() *http.Client {
+	return &http.Client{Timeout: 15 * time.Second}
 }
 
 func loggingMiddleware(logger *log.Logger, next http.Handler) http.Handler {
