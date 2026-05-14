@@ -1,0 +1,35 @@
+run:
+  timeout: 5m
+  tests: true
+  build-tags: []
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - gosimple
+    - ineffassign
+    - linter
+    - staticcheck
+    - typecheck
+    - unused
+    - gofmt
+    - gosec
+    - gocritic
+
+linters-settings:
+  errcheck:
+    check-blank: true
+    check-type-assertions: true
+  gofmt:
+    simplify: true
+
+output:
+  format: colored-line-number
+
+issues:
+  exclude-rules:
+    # Allow unused parameters in interfaces
+    - source: "^func.*\\(.*_.*\\)"
+      linters:
+        - unused

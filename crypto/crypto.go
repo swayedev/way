@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"io"
-	"log"
 
 	"github.com/swayedev/fcrypt"
 	"golang.org/x/crypto/sha3"
@@ -65,12 +64,11 @@ func Decrypt(encrypted string, passphrase string) ([]byte, error) {
 
 // GenerateRandomKey generates a random key of the specified length.
 // It uses the crypto/rand package to generate random bytes and returns the key as a byte slice.
-// If an error occurs during the generation process, it logs the error and returns nil.
-func GenerateRandomKey(length int) []byte {
+// If an error occurs during the generation process, it returns an error.
+func GenerateRandomKey(length int) ([]byte, error) {
 	key := make([]byte, length)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		log.Printf("failed to generate random key: %v", err)
-		return nil
+		return nil, err
 	}
-	return key
+	return key, nil
 }

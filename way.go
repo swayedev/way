@@ -50,9 +50,15 @@ func New() *Way {
 	if useDefaultSession() {
 		setSessionDefaults(sessions)
 	}
+	server := &http.Server{
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       30 * time.Second,
+	}
 	return &Way{
 		router:   mux.NewRouter(),
-		Server:   new(http.Server),
+		Server:   server,
 		sessions: sessions,
 		Logger:   defaultLogger(),
 	}
@@ -200,14 +206,16 @@ func (w *Way) Start(address string) error {
 	}
 	w.Server.Handler = loggingMiddleware(w.Logger, w.router)
 	w.Logger.Printf("Server started at %s", address)
-	asciiArt := `
+	if GetEnv("WAY_LOG_ASCII_ART", "") == "true" {
+		asciiArt := `
 	__        ______   __
 	\ \      / /  \ \ / /
 	 \ \ /\ / / /\ \ V / 
 	  \ V  V / /__\ | |  
 	   \_/\_/_/----\|_|  
 	`
-	w.Log().Println(asciiArt)
+		w.Log().Println(asciiArt)
+	}
 	return w.Server.Serve(w.Listener)
 }
 
@@ -308,28 +316,31 @@ func getDefaultStoreName() string {
 }
 
 // getEncryptionKey retrieves the encryption key used for cookie encryption.
-func getEncryptionKey() []byte {
+// Returns an error if the environment variable is not set.
+func getEncryptionKey() ([]byte, error) {
 	key := GetEnv(envCookieEncryptionKey, "")
 	if key == "" {
-		log.Fatalf("%s is required", envCookieEncryptionKey)
+		return nil, errors.New("environment variable " + envCookieEncryptionKey + " is required")
 	}
-	return []byte(key)
+	return []byte(key), nil
 }
 
 // getAuthenticationKey retrieves the authentication key from the environment variable.
-func getAuthenticationKey() []byte {
+// Returns an error if the environment variable is not set.
+func getAuthenticationKey() ([]byte, error) {
 	key := GetEnv(envCookieAuthenticationKey, "")
 	if key == "" {
-		log.Fatalf("%s is required", envCookieAuthenticationKey)
+		return nil, errors.New("environment variable " + envCookieAuthenticationKey + " is required")
 	}
-	return []byte(key)
+	return []byte(key), nil
 }
 
 // getStoreEncryptionKey retrieves the encryption key used for storing data in the application's store.
-func getStoreEncryptionKey() []byte {
+// Returns an error if the environment variable is not set.
+func getStoreEncryptionKey() ([]byte, error) {
 	key := GetEnv(envStoreEncryptionKey, "")
 	if key == "" {
-		log.Fatalf("%s is required", envStoreEncryptionKey)
+		return nil, errors.New("environment variable " + envStoreEncryptionKey + " is required")
 	}
-	return []byte(key)
+	return []byte(key), nil
 }
