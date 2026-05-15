@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +44,11 @@ type HandlerFunc func(*Context)
 
 // MiddlewareFunc represents a function that takes a HandlerFunc and returns a modified HandlerFunc.
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
+
+type RouteGroup struct {
+	way    *Way
+	prefix string
+}
 
 // New creates a new instance of Way.
 // It initializes the sessions and sets session defaults if necessary.
@@ -149,6 +155,11 @@ func (w *Way) SetSession(s *Session) {
 	w.sessions = s
 }
 
+// Group creates a route group with a shared path prefix.
+func (w *Way) Group(prefix string) *RouteGroup {
+	return &RouteGroup{way: w, prefix: cleanRoutePath(prefix)}
+}
+
 // Use adds a middleware to the middleware stack.
 func (w *Way) Use(middleware ...MiddlewareFunc) {
 	w.router.Use(func(next http.Handler) http.Handler {
@@ -201,6 +212,67 @@ func (w *Way) OPTIONS(path string, handler HandlerFunc) {
 }
 func (w *Way) HEAD(path string, handler HandlerFunc) { w.handleFuncWithMethod(path, handler, "HEAD") }
 
+// Group creates a nested route group below the current group's prefix.
+func (g *RouteGroup) Group(prefix string) *RouteGroup {
+	return &RouteGroup{way: g.way, prefix: joinRoutePaths(g.prefix, prefix)}
+}
+
+// HandleFunc registers a new route in the group.
+func (g *RouteGroup) HandleFunc(path string, handler HandlerFunc) {
+	g.way.HandleFunc(g.path(path), handler)
+}
+
+// HTTP method shortcuts for grouped routes.
+func (g *RouteGroup) GET(path string, handler HandlerFunc) {
+	g.handleFuncWithMethod(path, handler, "GET")
+}
+func (g *RouteGroup) POST(path string, handler HandlerFunc) {
+	g.handleFuncWithMethod(path, handler, "POST")
+}
+func (g *RouteGroup) PUT(path string, handler HandlerFunc) {
+	g.handleFuncWithMethod(path, handler, "PUT")
+}
+func (g *RouteGroup) DELETE(path string, handler HandlerFunc) {
+	g.handleFuncWithMethod(path, handler, "DELETE")
+}
+func (g *RouteGroup) PATCH(path string, handler HandlerFunc) {
+	g.handleFuncWithMethod(path, handler, "PATCH")
+}
+func (g *RouteGroup) OPTIONS(path string, handler HandlerFunc) {
+	g.handleFuncWithMethod(path, handler, "OPTIONS")
+}
+func (g *RouteGroup) HEAD(path string, handler HandlerFunc) {
+	g.handleFuncWithMethod(path, handler, "HEAD")
+}
+
+func (g *RouteGroup) handleFuncWithMethod(path string, handler HandlerFunc, method string) {
+	g.way.handleFuncWithMethod(g.path(path), handler, method)
+}
+
+func (g *RouteGroup) path(path string) string {
+	return joinRoutePaths(g.prefix, path)
+}
+
+func joinRoutePaths(prefix, path string) string {
+	prefix = cleanRoutePath(prefix)
+	path = cleanRoutePath(path)
+	if prefix == "/" {
+		return path
+	}
+	if path == "/" {
+		return prefix
+	}
+	return prefix + path
+}
+
+func cleanRoutePath(path string) string {
+	path = "/" + strings.Trim(path, "/")
+	if path == "/" {
+		return path
+	}
+	return strings.TrimRight(path, "/")
+}
+
 // newListener creates a new net.Listener.
 func newListener(network, address string) (net.Listener, error) {
 	return net.Listen(network, address)
@@ -229,6 +301,28 @@ func (w *Way) Start(address string) error {
 		w.Log().Println(asciiArt)
 	}
 	return w.Server.Serve(w.Listener)
+}
+
+// Serve accepts connections on the provided listener.
+// Use this instead of Start when you control listener creation (e.g. auto-fallback port).
+func (w *Way) Serve(ln net.Listener) error {
+	w.startupMutex.Lock()
+	defer w.startupMutex.Unlock()
+
+	w.Listener = ln
+	w.Server.Handler = loggingMiddleware(w.Log(), w.router)
+	w.Log().Printf("Server started at %s", ln.Addr())
+	if GetEnv("WAY_LOG_ASCII_ART", "") == "true" {
+		asciiArt := `
+    __        ______   __
+    \ \      / /  \ \ / /
+     \ \ /\ / / /\ \ V / 
+      \ V  V / /__\ | |  
+       \_/\_/_/----\|_|  
+    `
+		w.Log().Println(asciiArt)
+	}
+	return w.Server.Serve(ln)
 }
 
 // Close immediately stops the server.

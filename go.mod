@@ -8,8 +8,8 @@ require (
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.4.0
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/swayedev/fcrypt v1.0.0-rc1
 	github.com/mattn/go-sqlite3 v1.14.44
+	github.com/swayedev/fcrypt v1.0.0-rc1
 	golang.org/x/crypto v0.51.0
 )
 
@@ -17,7 +17,7 @@ replace github.com/swayedev/fcrypt => ../fcrypt
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/VictoriaMetrics/easyproto v0.1.4 // indirect
+	github.com/VictoriaMetrics/easyproto v1.2.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/godror/knownpb v0.3.0 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect

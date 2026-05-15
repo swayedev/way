@@ -103,6 +103,39 @@ func TestHTTPMethodHelpersRegisterRoutes(t *testing.T) {
 	}
 }
 
+func TestRouteGroupRegistersPrefixedRoutes(t *testing.T) {
+	w := New()
+	api := w.Group("/api/v1")
+
+	api.GET("/status", func(c *Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	apiV2 := w.Group("api").Group("v2")
+	apiV2.POST("upload", func(c *Context) {
+		c.Status(http.StatusCreated)
+	})
+
+	tests := []struct {
+		method string
+		path   string
+		want   int
+	}{
+		{method: http.MethodGet, path: "/api/v1/status", want: http.StatusOK},
+		{method: http.MethodPost, path: "/api/v2/upload", want: http.StatusCreated},
+		{method: http.MethodGet, path: "/status", want: http.StatusNotFound},
+	}
+
+	for _, test := range tests {
+		req := httptest.NewRequest(test.method, test.path, nil)
+		rec := httptest.NewRecorder()
+		w.router.ServeHTTP(rec, req)
+		if rec.Code != test.want {
+			t.Fatalf("%s %s status = %d, want %d", test.method, test.path, rec.Code, test.want)
+		}
+	}
+}
+
 func TestASCIIArtLoggingGatedByEnv(t *testing.T) {
 	// This is a manual test helper; in a real scenario, you'd capture log output
 	// For now, just verify that the env variable is checked
